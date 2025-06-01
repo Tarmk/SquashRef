@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useMatchPersistence } from '../../../hooks/useMatchPersistence';
 
-export default function GamePage() {
+function GamePageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   
@@ -12,16 +12,13 @@ export default function GamePage() {
   const player1 = searchParams.get('player1') || 'Player 1';
   const player2 = searchParams.get('player2') || 'Player 2';
   const initialServer = searchParams.get('server') || player1;
-  const player1Side = searchParams.get('player1Side') || 'left';
   
   // Game state - read from URL parameters
   const [currentServer, setCurrentServer] = useState(searchParams.get('server') || initialServer);
-  const [lastServingSide, setLastServingSide] = useState<'left' | 'right'>(
-    (searchParams.get('lastServingSide') as 'left' | 'right') || 'left'
-  );
-  const [player1Score, setPlayer1Score] = useState(parseInt(searchParams.get('player1Score') || '0'));
-  const [player2Score, setPlayer2Score] = useState(parseInt(searchParams.get('player2Score') || '0'));
-  const [gameNumber, setGameNumber] = useState(parseInt(searchParams.get('gameNumber') || '1'));
+  const [lastServingSide, setLastServingSide] = useState<'left' | 'right'>('left');
+  const [player1Score, setPlayer1Score] = useState(0);
+  const [player2Score, setPlayer2Score] = useState(0);
+  const gameNumber = parseInt(searchParams.get('gameNumber') || '1', 10);
   const [player1Games, setPlayer1Games] = useState(parseInt(searchParams.get('player1Games') || '0'));
   const [player2Games, setPlayer2Games] = useState(parseInt(searchParams.get('player2Games') || '0'));
   
@@ -70,9 +67,6 @@ export default function GamePage() {
   
   // Flag to prevent duplicate game processing
   const [gameProcessed, setGameProcessed] = useState(false);
-  
-  // Flag to track when we're progressing between games (to prevent URL sync interference)
-  const [gameProgressing, setGameProgressing] = useState(false);
   
   // Game history tracking for transcripts with timing
   const [gameHistory, setGameHistory] = useState<Array<{
@@ -163,8 +157,13 @@ export default function GamePage() {
 
   // Helper function to format duration
   const formatDuration = (seconds: number): string => {
-    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
     const remainingSeconds = seconds % 60;
+    
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+    }
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
@@ -337,12 +336,6 @@ export default function GamePage() {
 
   const startNextGame = () => {
     if (gameWinner) {
-      setGameProgressing(true); // Prevent URL sync during game progression
-      setPlayer1Score(0);
-      setPlayer2Score(0);
-      setGameNumber(gameNumber + 1);
-      setCurrentServer(gameWinner); // Winner of previous game serves first
-      setShowBreakTimer(false);
       setGameProcessed(false); // Reset for next game
       
       // Reset game timer for new game
@@ -358,7 +351,6 @@ export default function GamePage() {
     setLastServingSide(selectedSide);
     setAwaitingGameStartSideSelection(false);
     setGameWinner(null);
-    setGameProgressing(false); // Game progression complete, allow normal operation
   };
 
   const handleFoulCall = () => {
@@ -465,133 +457,6 @@ export default function GamePage() {
     setShowFaultModal(false);
     setFaultStep('decision');
     setSelectedFaultType(null);
-  };
-
-  const printGameTranscript = () => {
-    const lastGame = gameHistory[gameHistory.length - 1];
-    if (!lastGame) return;
-
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-
-    const printContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Game ${lastGame.gameNumber} Transcript</title>
-          <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              margin: 20px; 
-              line-height: 1.6; 
-            }
-            .header { 
-              text-align: center; 
-              border-bottom: 2px solid #333; 
-              padding-bottom: 20px; 
-              margin-bottom: 30px; 
-            }
-            .match-info { 
-              display: flex; 
-              justify-content: space-between; 
-              margin-bottom: 20px; 
-            }
-            .game-summary { 
-              background: #f5f5f5; 
-              padding: 15px; 
-              border-radius: 8px; 
-              margin-bottom: 20px; 
-            }
-            .points-table { 
-              width: 100%; 
-              border-collapse: collapse; 
-              margin-top: 20px; 
-            }
-            .points-table th, .points-table td { 
-              border: 1px solid #ddd; 
-              padding: 8px; 
-              text-align: center; 
-            }
-            .points-table th { 
-              background-color: #f2f2f2; 
-              font-weight: bold; 
-            }
-            .handout { 
-              background-color: #fff3cd; 
-            }
-            .fault {
-              background-color: #f8d7da;
-              border-left: 3px solid #dc3545;
-            }
-            .winner { 
-              background-color: #d4edda; 
-            }
-            @media print { 
-              body { margin: 0; } 
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>Squash Match Transcript</h1>
-            <h2>Game ${lastGame.gameNumber}</h2>
-          </div>
-          
-          <div class="match-info">
-            <div><strong>Match Format:</strong> ${matchFormat === 'best-of-3' ? 'Best of 3' : 'Best of 5'}</div>
-            <div><strong>Date:</strong> ${new Date().toLocaleDateString()}</div>
-            <div><strong>Time:</strong> ${new Date().toLocaleTimeString()}</div>
-          </div>
-          
-          <div class="game-summary">
-            <h3>Game Summary</h3>
-            <p><strong>Players:</strong> ${player1} vs ${player2}</p>
-            <p><strong>Winner:</strong> ${lastGame.winner}</p>
-            <p><strong>Final Score:</strong> ${lastGame.finalScore}</p>
-            <p><strong>Game Duration:</strong> ${formatDuration(lastGame.duration)}</p>
-            <p><strong>Start Time:</strong> ${lastGame.startTime.toLocaleTimeString()}</p>
-            <p><strong>End Time:</strong> ${lastGame.endTime.toLocaleTimeString()}</p>
-            <p><strong>Total Points:</strong> ${lastGame.points.length}</p>
-          </div>
-          
-          <h3>Point-by-Point Breakdown</h3>
-          <table class="points-table">
-            <thead>
-              <tr>
-                <th>Point #</th>
-                <th>Scorer</th>
-                <th>Score</th>
-                <th>Server</th>
-                <th>Serving Side</th>
-                <th>Handout</th>
-                <th>Fault</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${lastGame.points.map((point, index) => `
-                <tr class="${point.isHandout ? 'handout' : ''} ${point.isFault ? 'fault' : ''}">
-                  <td>${index + 1}</td>
-                  <td><strong>${point.scorer}</strong></td>
-                  <td>${point.score}</td>
-                  <td>${point.server}</td>
-                  <td>${point.servingSide}</td>
-                  <td>${point.isHandout ? '✓' : ''}</td>
-                  ${point.isFault ? `<td><strong>${point.faultReason}</strong></td>` : '<td></td>'}
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-          
-          <div style="margin-top: 30px; text-align: center; color: #666; font-size: 12px;">
-            Generated by Squash Ref Support App
-          </div>
-        </body>
-      </html>
-    `;
-
-    printWindow.document.write(printContent);
-    printWindow.document.close();
-    printWindow.print();
   };
 
   const printSpecificGameTranscript = (game: {
@@ -1341,5 +1206,13 @@ export default function GamePage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function GamePage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <GamePageContent />
+    </Suspense>
   );
 } 

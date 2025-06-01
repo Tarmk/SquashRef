@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 
-export default function BreakOptionPage() {
+function BreakOptionPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const matchFormat = searchParams.get('format') || 'best-of-3';
@@ -19,7 +19,6 @@ export default function BreakOptionPage() {
   const lastServer = searchParams.get('lastServer') || player1;
   const lastServingSide = searchParams.get('lastServingSide') || 'left';
   
-  const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [isBreakActive, setIsBreakActive] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(60); // 1 minute in seconds
   const [isBreakComplete, setIsBreakComplete] = useState(false);
@@ -47,12 +46,10 @@ export default function BreakOptionPage() {
   };
 
   const handleTakeBreak = () => {
-    setSelectedOption('break');
     setIsBreakActive(true);
   };
 
   const handleSkipBreak = () => {
-    setSelectedOption('skip');
     proceedToServe();
   };
 
@@ -223,5 +220,13 @@ export default function BreakOptionPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function BreakOptionPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <BreakOptionPageContent />
+    </Suspense>
   );
 } 

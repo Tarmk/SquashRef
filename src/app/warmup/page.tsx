@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 
-export default function WarmupPage() {
+function WarmupPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const matchFormat = searchParams.get('format') || 'best-of-3';
@@ -43,10 +44,6 @@ export default function WarmupPage() {
     return ((300 - timeRemaining) / 300) * 100;
   };
 
-  const handleContinue = () => {
-    router.push(`/break-option?format=${matchFormat}&player1=${encodeURIComponent(player1)}&player2=${encodeURIComponent(player2)}`);
-  };
-
   const handleSkip = () => {
     router.push(`/break-option?format=${matchFormat}&player1=${encodeURIComponent(player1)}&player2=${encodeURIComponent(player2)}`);
   };
@@ -61,6 +58,28 @@ export default function WarmupPage() {
       setTimeRemaining(150);
     }
   };
+
+  if (timeRemaining === 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+        <div className="text-center">
+          <div className="text-6xl mb-6">⏰</div>
+          <h1 className="text-4xl font-bold text-gray-900 mb-4">
+            Warmup Complete!
+          </h1>
+          <p className="text-xl text-gray-600 mb-8">
+            Time to start the match
+          </p>
+          <Link
+            href={`/serve-side?${searchParams.toString()}`}
+            className="px-8 py-4 bg-green-500 hover:bg-green-600 text-white rounded-xl font-semibold text-lg transition-all duration-300 transform hover:scale-105 shadow-lg"
+          >
+            Proceed to Game
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
@@ -149,5 +168,13 @@ export default function WarmupPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function WarmupPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <WarmupPageContent />
+    </Suspense>
   );
 } 

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '../../../contexts/AuthContext';
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { cleanupOrphanedMatches } from '../../../lib/matchService';
 
@@ -84,7 +84,7 @@ export default function DashboardPage() {
     try {
       await logout();
       router.push('/auth/login');
-    } catch (error) {
+    } catch {
       console.error('Failed to log out');
     }
   };

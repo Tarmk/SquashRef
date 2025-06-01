@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 
-export default function PlayersPage() {
+function PlayersPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const matchFormat = searchParams.get('format') || 'best-of-3';
@@ -112,5 +112,13 @@ export default function PlayersPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PlayersPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <PlayersPageContent />
+    </Suspense>
   );
 } 

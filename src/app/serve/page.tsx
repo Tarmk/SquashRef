@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 
-export default function ServePage() {
+function ServePageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   
@@ -186,5 +186,13 @@ export default function ServePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ServePage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <ServePageContent />
+    </Suspense>
   );
 } 
