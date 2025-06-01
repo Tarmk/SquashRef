@@ -23,6 +23,10 @@ interface MatchData {
       isHandout: boolean;
       servingSide: 'left' | 'right';
       server: string;
+      isFault?: boolean;
+      faultType?: 'let' | 'stroke' | 'no-let';
+      faultAgainst?: string;
+      faultReason?: string;
     }>;
     winner: string;
     finalScore: string;
@@ -76,7 +80,7 @@ export default function MatchDetailsPage() {
 
         const matchData: MatchData = {
           id: matchSnap.id,
-          ...data,
+          ...(data as Omit<MatchData, 'id' | 'matchStartTime' | 'gameHistory' | 'createdAt' | 'updatedAt'>),
           matchStartTime: data.matchStartTime?.toDate() || new Date(),
           gameHistory: data.gameHistory?.map((game: any) => ({
             ...game,
@@ -187,6 +191,18 @@ export default function MatchDetailsPage() {
             .handout { 
               background-color: #fff3cd; 
             }
+            .fault {
+              background-color: #f8d7da;
+              border-left: 3px solid #dc3545;
+            }
+            .stroke-point {
+              background-color: #d4edda;
+              border-left: 3px solid #28a745;
+            }
+            .let-point {
+              background-color: #cce7ff;
+              border-left: 3px solid #007bff;
+            }
             @media print { 
               body { margin: 0; } 
               .game-section { page-break-inside: avoid; } 
@@ -228,17 +244,19 @@ export default function MatchDetailsPage() {
                     <th>Server</th>
                     <th>Side</th>
                     <th>Handout</th>
+                    <th>Referee Decision</th>
                   </tr>
                 </thead>
                 <tbody>
                   ${game.points.map((point, index) => `
-                    <tr class="${point.isHandout ? 'handout' : ''}">
+                    <tr class="${point.isHandout ? 'handout' : ''} ${point.isFault ? 'fault' : ''}">
                       <td>${index + 1}</td>
                       <td><strong>${point.scorer}</strong></td>
                       <td>${point.score}</td>
                       <td>${point.server}</td>
                       <td>${point.servingSide}</td>
                       <td>${point.isHandout ? '✓' : ''}</td>
+                      <td>${point.isFault ? `<strong style="color: ${point.faultType === 'stroke' ? '#28a745' : point.faultType === 'let' ? '#007bff' : '#dc3545'}">${point.faultReason || point.faultType?.toUpperCase()}</strong>` : ''}</td>
                     </tr>
                   `).join('')}
                 </tbody>
@@ -311,6 +329,15 @@ export default function MatchDetailsPage() {
   const totalPoints = match.gameHistory.reduce((total, game) => total + game.points.length, 0);
   const handouts = match.gameHistory.reduce((total, game) => 
     total + game.points.filter(point => point.isHandout).length, 0
+  );
+  const strokes = match.gameHistory.reduce((total, game) => 
+    total + game.points.filter(point => point.faultType === 'stroke').length, 0
+  );
+  const lets = match.gameHistory.reduce((total, game) => 
+    total + game.points.filter(point => point.faultType === 'let').length, 0
+  );
+  const noLets = match.gameHistory.reduce((total, game) => 
+    total + game.points.filter(point => point.faultType === 'no-let').length, 0
   );
 
   return (
@@ -407,6 +434,18 @@ export default function MatchDetailsPage() {
                 <span className="font-medium text-gray-900">🔄 {handouts}</span>
               </div>
               <div className="flex justify-between">
+                <span className="text-gray-600">Total Strokes:</span>
+                <span className="font-medium text-gray-900">⚡ {strokes}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Total Lets:</span>
+                <span className="font-medium text-gray-900">🔄 {lets}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Total No-lets:</span>
+                <span className="font-medium text-gray-900">❌ {noLets}</span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-gray-600">Avg Points/Game:</span>
                 <span className="font-medium text-gray-900">
                   📊 {match.gameHistory.length > 0 ? Math.round(totalPoints / match.gameHistory.length) : 0}
@@ -456,16 +495,6 @@ export default function MatchDetailsPage() {
                 <span className="text-gray-600">Match ID:</span>
                 <span className="font-mono text-sm text-gray-700">#{match.id.slice(-8)}</span>
               </div>
-              
-              {/* Quick Actions */}
-              <div className="mt-4 pt-2 border-t border-gray-200">
-                <button
-                  onClick={printMatchTranscript}
-                  className="w-full px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-sm font-medium transition-colors"
-                >
-                  📄 Quick Print Transcript
-                </button>
-              </div>
             </div>
           </div>
         </div>
@@ -501,6 +530,13 @@ export default function MatchDetailsPage() {
                         <span>Duration: {formatDuration(game.duration)}</span>
                         <span>Points: {game.points.length}</span>
                         <span>Handouts: {game.points.filter(p => p.isHandout).length}</span>
+                        {game.points.some(p => p.isFault) && (
+                          <>
+                            <span>⚡ {game.points.filter(p => p.faultType === 'stroke').length}</span>
+                            <span>🔄 {game.points.filter(p => p.faultType === 'let').length}</span>
+                            <span>❌ {game.points.filter(p => p.faultType === 'no-let').length}</span>
+                          </>
+                        )}
                       </div>
                     </div>
                     <div className="text-right">
@@ -525,14 +561,24 @@ export default function MatchDetailsPage() {
                           <span
                             key={pointIndex}
                             className={`
-                              px-2 py-1 rounded font-medium
-                              ${point.isHandout 
+                              px-2 py-1 rounded font-medium text-xs
+                              ${point.isFault && point.faultType === 'stroke' 
+                                ? 'bg-green-100 text-green-800 border border-green-300' 
+                                : point.isFault && point.faultType === 'let'
+                                ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                                : point.isFault && point.faultType === 'no-let'
+                                ? 'bg-red-100 text-red-800 border border-red-300'
+                                : point.isHandout 
                                 ? 'bg-orange-100 text-orange-800' 
-                                : 'bg-blue-100 text-blue-800'
+                                : 'bg-gray-100 text-gray-800'
                               }
                             `}
+                            title={point.isFault ? point.faultReason : undefined}
                           >
-                            {point.score} {point.isHandout && '(H)'}
+                            {point.isFault 
+                              ? `${point.faultType === 'stroke' ? '⚡' : point.faultType === 'let' ? '🔄' : '❌'} ${point.score}` 
+                              : `${point.score} ${point.isHandout ? '(H)' : ''}`
+                            }
                           </span>
                         ))}
                         {game.points.length > 15 && (

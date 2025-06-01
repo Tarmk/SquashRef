@@ -35,19 +35,37 @@ export default function GamePage() {
   
   // Side selection after handout
   const [awaitingSideSelection, setAwaitingSideSelection] = useState(false);
-  const [pendingServer, setPendingServer] = useState<string | null>(null);
+  const [pendingServer, setPendingServer] = useState<string>('');
+  
+  // Game start side selection
+  const [awaitingGameStartSideSelection, setAwaitingGameStartSideSelection] = useState(false);
   
   // Break timer between games
   const [showBreakTimer, setShowBreakTimer] = useState(false);
-  const [breakTimeRemaining, setBreakTimeRemaining] = useState(60); // 60 seconds = 1 minute
+  const [breakTimeRemaining, setBreakTimeRemaining] = useState(60); // 1 minute in seconds
   const [timerRunning, setTimerRunning] = useState(false);
   const [gameWinner, setGameWinner] = useState<string | null>(null);
   
-  // Side selection for new game start
-  const [awaitingGameStartSideSelection, setAwaitingGameStartSideSelection] = useState(false);
+  // Current game's points tracking for printing
+  const [currentGamePoints, setCurrentGamePoints] = useState<Array<{
+    scorer: string;
+    score: string;
+    isHandout: boolean;
+    servingSide: 'left' | 'right';
+    server: string;
+    isFault?: boolean;
+    faultType?: 'let' | 'stroke' | 'no-let';
+    faultAgainst?: string;
+    faultReason?: string;
+  }>>([]);
+  
+  // Fault decision workflow
+  const [showFaultModal, setShowFaultModal] = useState(false);
+  const [faultStep, setFaultStep] = useState<'decision' | 'player'>('decision');
+  const [selectedFaultType, setSelectedFaultType] = useState<'let' | 'stroke' | 'no-let' | null>(null);
   
   // Match completion state
-  const [matchComplete, setMatchComplete] = useState(false);
+  const [matchCompleted, setMatchCompleted] = useState(false);
   const [matchWinner, setMatchWinner] = useState<string | null>(null);
   
   // Flag to prevent duplicate game processing
@@ -65,6 +83,10 @@ export default function GamePage() {
       isHandout: boolean;
       servingSide: 'left' | 'right';
       server: string;
+      isFault?: boolean;
+      faultType?: 'let' | 'stroke' | 'no-let';
+      faultAgainst?: string;
+      faultReason?: string;
     }>;
     winner: string;
     finalScore: string;
@@ -73,14 +95,6 @@ export default function GamePage() {
     endTime: Date;
   }>>([]);
   
-  const [currentGamePoints, setCurrentGamePoints] = useState<Array<{
-    scorer: string;
-    score: string;
-    isHandout: boolean;
-    servingSide: 'left' | 'right';
-    server: string;
-  }>>([]);
-
   const requiredGames = matchFormat === 'best-of-3' ? 2 : 3;
   const gameToPoints = 11; // Standard squash game to 11 points
 
@@ -106,7 +120,7 @@ export default function GamePage() {
       lastServingSide,
       currentGamePoints,
     },
-    isComplete: matchComplete,
+    isComplete: matchCompleted,
     matchWinner: matchWinner || undefined,
     totalDuration: getTotalMatchDuration(),
     matchStartTime,
@@ -136,7 +150,7 @@ export default function GamePage() {
   // Update current game duration every second
   useEffect(() => {
     // Don't update timer if match is complete
-    if (matchComplete) return;
+    if (matchCompleted) return;
 
     const interval = setInterval(() => {
       const now = new Date();
@@ -145,7 +159,7 @@ export default function GamePage() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [gameStartTime, matchComplete]);
+  }, [gameStartTime, matchCompleted]);
 
   // Helper function to format duration
   const formatDuration = (seconds: number): string => {
@@ -202,6 +216,22 @@ export default function GamePage() {
                    (newPlayer2Score >= 11 && newPlayer2Score - newPlayer1Score >= 2) ||
                    newPlayer1Score >= 15 || newPlayer2Score >= 15;
     
+    // Debug logging for game win detection
+    console.log('Game Win Check:', {
+      newPlayer1Score,
+      newPlayer2Score,
+      scoreDiff: Math.abs(newPlayer1Score - newPlayer2Score),
+      gameWon,
+      isHandout,
+      awaitingSideSelection,
+      conditions: {
+        player1WinBy2: newPlayer1Score >= 11 && newPlayer1Score - newPlayer2Score >= 2,
+        player2WinBy2: newPlayer2Score >= 11 && newPlayer2Score - newPlayer1Score >= 2,
+        player1Max15: newPlayer1Score >= 15,
+        player2Max15: newPlayer2Score >= 15
+      }
+    });
+    
     if (gameWon && !isHandout) {
       // Only process game win immediately if it's not a handout
       processGameWin(newPlayer1Score, newPlayer2Score, updatedPoints);
@@ -213,9 +243,10 @@ export default function GamePage() {
       setCurrentServer(pendingServer);
       setLastServingSide(selectedSide);
       setAwaitingSideSelection(false);
-      setPendingServer(null);
+      setPendingServer('');
       
       // Check if this was a game-winning point that we need to process
+      // Use the current scores which reflect the point that was just scored
       const gameWon = (player1Score >= 11 && player1Score - player2Score >= 2) || 
                      (player2Score >= 11 && player2Score - player1Score >= 2) ||
                      player1Score >= 15 || player2Score >= 15;
@@ -281,7 +312,7 @@ export default function GamePage() {
     
     if (matchWon) {
       // Show match completion screen
-      setMatchComplete(true);
+      setMatchCompleted(true);
       setMatchWinner(winner);
     } else {
       // Show break timer for next game
@@ -331,8 +362,109 @@ export default function GamePage() {
   };
 
   const handleFoulCall = () => {
-    // Navigate to foul selection page (to be implemented)
-    alert('Foul calling functionality - to be implemented');
+    setShowFaultModal(true);
+    setFaultStep('decision');
+    setSelectedFaultType(null);
+  };
+
+  const handleFaultDecision = (faultType: 'let' | 'stroke' | 'no-let') => {
+    setSelectedFaultType(faultType);
+    if (faultType === 'let' || faultType === 'no-let') {
+      // Let and No Let: No need to select player, process immediately
+      processFaultDecision(faultType, null);
+    } else {
+      // Stroke: Need to select which player gets the point
+      setFaultStep('player');
+    }
+  };
+
+  const handleFaultPlayerSelection = (player: string) => {
+    if (selectedFaultType) {
+      processFaultDecision(selectedFaultType, player);
+    }
+  };
+
+  const processFaultDecision = (faultType: 'let' | 'stroke' | 'no-let', faultAgainst: string | null) => {
+    // Create fault record
+    const faultRecord = {
+      scorer: currentServer, // Default to current server, will update for stroke
+      score: `${player1Score}-${player2Score}`,
+      isHandout: false,
+      servingSide: lastServingSide,
+      server: currentServer,
+      isFault: true,
+      faultType,
+      faultAgainst: faultAgainst || undefined,
+      faultReason: `${faultType.toUpperCase()}${faultAgainst ? ` - point to ${faultAgainst}` : ''}`
+    };
+
+    // Handle scoring and game logic based on fault type
+    if (faultType === 'stroke') {
+      // STROKE: Award point to the interfered player
+      const scoringPlayer = faultAgainst!; // Should always be set for stroke
+      
+      // Update scores
+      const newPlayer1Score = scoringPlayer === player1 ? player1Score + 1 : player1Score;
+      const newPlayer2Score = scoringPlayer === player2 ? player2Score + 1 : player2Score;
+      
+      if (scoringPlayer === player1) {
+        setPlayer1Score(newPlayer1Score);
+      } else {
+        setPlayer2Score(newPlayer2Score);
+      }
+
+      // Update the fault record with new score and correct scorer
+      const updatedFaultRecord = {
+        ...faultRecord,
+        score: `${newPlayer1Score}-${newPlayer2Score}`,
+        scorer: scoringPlayer,
+        faultReason: `STROKE - point to ${scoringPlayer}`
+      };
+      setCurrentGamePoints(prev => [...prev, updatedFaultRecord]);
+
+      // Check for game win
+      const gameWon = (newPlayer1Score >= 11 && newPlayer1Score - newPlayer2Score >= 2) || 
+                     (newPlayer2Score >= 11 && newPlayer2Score - newPlayer1Score >= 2) ||
+                     newPlayer1Score >= 15 || newPlayer2Score >= 15;
+      
+      if (gameWon) {
+        processGameWin(newPlayer1Score, newPlayer2Score, [...currentGamePoints, updatedFaultRecord]);
+      }
+
+      // Show toast notification
+      setToast({
+        message: `Stroke to ${scoringPlayer}!`,
+        type: 'score'
+      });
+      
+    } else if (faultType === 'let') {
+      // LET: Just log the decision, replay the point (no score change)
+      setCurrentGamePoints(prev => [...prev, { ...faultRecord, faultReason: 'LET - point replayed' }]);
+      
+      // Show toast notification
+      setToast({
+        message: 'Let called - Point replayed',
+        type: 'handout'
+      });
+      
+    } else if (faultType === 'no-let') {
+      // NO LET: Log the decision, no score change, play continues
+      setCurrentGamePoints(prev => [...prev, { ...faultRecord, faultReason: 'NO LET - no interference' }]);
+      
+      // Show toast notification
+      setToast({
+        message: 'No Let - No significant interference',
+        type: 'handout'
+      });
+    }
+
+    // Clear toast after 3 seconds
+    setTimeout(() => setToast(null), 3000);
+
+    // Close modal
+    setShowFaultModal(false);
+    setFaultStep('decision');
+    setSelectedFaultType(null);
   };
 
   const printGameTranscript = () => {
@@ -387,6 +519,10 @@ export default function GamePage() {
             .handout { 
               background-color: #fff3cd; 
             }
+            .fault {
+              background-color: #f8d7da;
+              border-left: 3px solid #dc3545;
+            }
             .winner { 
               background-color: #d4edda; 
             }
@@ -428,17 +564,19 @@ export default function GamePage() {
                 <th>Server</th>
                 <th>Serving Side</th>
                 <th>Handout</th>
+                <th>Fault</th>
               </tr>
             </thead>
             <tbody>
               ${lastGame.points.map((point, index) => `
-                <tr class="${point.isHandout ? 'handout' : ''}">
+                <tr class="${point.isHandout ? 'handout' : ''} ${point.isFault ? 'fault' : ''}">
                   <td>${index + 1}</td>
                   <td><strong>${point.scorer}</strong></td>
                   <td>${point.score}</td>
                   <td>${point.server}</td>
                   <td>${point.servingSide}</td>
                   <td>${point.isHandout ? '✓' : ''}</td>
+                  ${point.isFault ? `<td><strong>${point.faultReason}</strong></td>` : '<td></td>'}
                 </tr>
               `).join('')}
             </tbody>
@@ -518,6 +656,10 @@ export default function GamePage() {
             }
             .handout { 
               background-color: #fff3cd; 
+            }
+            .fault {
+              background-color: #f8d7da;
+              border-left: 3px solid #dc3545;
             }
             @media print { 
               body { margin: 0; } 
@@ -646,6 +788,10 @@ export default function GamePage() {
             }
             .handout { 
               background-color: #fff3cd; 
+            }
+            .fault {
+              background-color: #f8d7da;
+              border-left: 3px solid #dc3545;
             }
             @media print { 
               body { margin: 0; } 
@@ -824,7 +970,7 @@ export default function GamePage() {
 
         {/* Scoring Buttons */}
         <div className="grid grid-cols-1 gap-4 mb-6">
-          {matchComplete ? (
+          {matchCompleted ? (
             /* Match Completion Screen */
             <div className="bg-white rounded-2xl shadow-lg p-8">
               <div className="text-center mb-8">
@@ -874,7 +1020,13 @@ export default function GamePage() {
                   📋 Print Complete Match Transcript
                 </button>
                 <button
-                  onClick={() => window.location.href = '/'}
+                  onClick={() => router.push('/dashboard')}
+                  className="p-4 bg-purple-500 hover:bg-purple-600 text-white rounded-xl font-semibold text-lg transition-all duration-300 transform hover:scale-105 shadow-lg"
+                >
+                  📊 Back to Dashboard
+                </button>
+                <button
+                  onClick={() => router.push('/')}
                   className="p-4 bg-green-500 hover:bg-green-600 text-white rounded-xl font-semibold text-lg transition-all duration-300 transform hover:scale-105 shadow-lg"
                 >
                   🏠 New Match
@@ -1067,13 +1219,12 @@ export default function GamePage() {
                 </button>
               </div>
               
-              {/* Foul Button - Disabled for now */}
+              {/* Let/Stroke/No Let Button */}
               <button
-                disabled
-                className="p-4 bg-gray-300 text-gray-500 rounded-xl font-semibold transition-all duration-300 shadow-lg cursor-not-allowed opacity-60"
-                title="Feature coming soon"
+                onClick={handleFoulCall}
+                className="p-4 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-semibold transition-all duration-300 shadow-lg"
               >
-                Call Foul / Let / Stroke (Coming Soon)
+                🟡 Call for Let / Stroke / No Let
               </button>
             </>
           )}
@@ -1085,6 +1236,110 @@ export default function GamePage() {
           <p>Must win by 2 points (or first to 15 if tied at 10-10)</p>
         </div>
       </div>
+
+      {/* Fault Decision Modal */}
+      {showFaultModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            {faultStep === 'decision' ? (
+              <>
+                <div className="text-center mb-6">
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2">Referee Decision</h3>
+                  <p className="text-gray-600">What is your call for this interference?</p>
+                </div>
+                
+                <div className="space-y-4">
+                  <button
+                    onClick={() => handleFaultDecision('let')}
+                    className="w-full p-4 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-semibold text-lg transition-all duration-300 transform hover:scale-105 shadow-lg"
+                  >
+                    🔄 LET
+                    <div className="text-sm font-normal mt-1">Replay the point</div>
+                  </button>
+                  
+                  <button
+                    onClick={() => handleFaultDecision('stroke')}
+                    className="w-full p-4 bg-green-500 hover:bg-green-600 text-white rounded-xl font-semibold text-lg transition-all duration-300 transform hover:scale-105 shadow-lg"
+                  >
+                    ⚡ STROKE
+                    <div className="text-sm font-normal mt-1">Award point to interfered player</div>
+                  </button>
+                  
+                  <button
+                    onClick={() => handleFaultDecision('no-let')}
+                    className="w-full p-4 bg-red-500 hover:bg-red-600 text-white rounded-xl font-semibold text-lg transition-all duration-300 transform hover:scale-105 shadow-lg"
+                  >
+                    ❌ NO LET
+                    <div className="text-sm font-normal mt-1">No significant interference</div>
+                  </button>
+                </div>
+                
+                <button
+                  onClick={() => setShowFaultModal(false)}
+                  className="w-full mt-4 p-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="text-center mb-6">
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                    {selectedFaultType === 'stroke' ? 'STROKE DECISION' : 'NO LET DECISION'}
+                  </h3>
+                  <p className="text-gray-600">
+                    {selectedFaultType === 'stroke' 
+                      ? 'Who was interfered with and gets the point?' 
+                      : 'Decision logged - no point awarded'
+                    }
+                  </p>
+                </div>
+                
+                {selectedFaultType === 'stroke' ? (
+                  <div className="space-y-4">
+                    <button
+                      onClick={() => handleFaultPlayerSelection(player1)}
+                      className="w-full p-4 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-semibold text-lg transition-all duration-300 transform hover:scale-105 shadow-lg"
+                    >
+                      {player1}
+                      <div className="text-sm font-normal mt-1">Award point to {player1}</div>
+                    </button>
+                    
+                    <button
+                      onClick={() => handleFaultPlayerSelection(player2)}
+                      className="w-full p-4 bg-green-500 hover:bg-green-600 text-white rounded-xl font-semibold text-lg transition-all duration-300 transform hover:scale-105 shadow-lg"
+                    >
+                      {player2}
+                      <div className="text-sm font-normal mt-1">Award point to {player2}</div>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-center">
+                    <div className="bg-gray-100 rounded-lg p-4 mb-4">
+                      <p className="text-gray-700">No Let decision has been logged. Play continues as normal.</p>
+                    </div>
+                    <button
+                      onClick={() => setShowFaultModal(false)}
+                      className="w-full p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
+                    >
+                      Continue
+                    </button>
+                  </div>
+                )}
+                
+                {selectedFaultType === 'stroke' && (
+                  <button
+                    onClick={() => setFaultStep('decision')}
+                    className="w-full mt-4 p-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
+                  >
+                    ← Back
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 } 
