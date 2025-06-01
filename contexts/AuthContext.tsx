@@ -10,7 +10,7 @@ import {
   updateProfile
 } from 'firebase/auth';
 
-import { auth } from '../lib/firebase';
+import { auth, isFirebaseConfigured } from '../lib/firebase';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -34,11 +34,14 @@ export function useAuth() {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isFirebaseConfigured, setIsFirebaseConfigured] = useState(false);
+  const [firebaseConfigured, setFirebaseConfigured] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   async function signup(email: string, password: string, displayName: string) {
-    if (!isFirebaseConfigured) {
+    if (typeof window === 'undefined') {
+      throw new Error('Authentication is not available during server-side rendering.');
+    }
+    if (!firebaseConfigured) {
       throw new Error('Firebase is not configured. Please set up your environment variables.');
     }
     const { user } = await createUserWithEmailAndPassword(auth, email, password);
@@ -47,14 +50,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function login(email: string, password: string) {
-    if (!isFirebaseConfigured) {
+    if (typeof window === 'undefined') {
+      throw new Error('Authentication is not available during server-side rendering.');
+    }
+    if (!firebaseConfigured) {
       throw new Error('Firebase is not configured. Please set up your environment variables.');
     }
     await signInWithEmailAndPassword(auth, email, password);
   }
 
   async function logout() {
-    if (!isFirebaseConfigured) {
+    if (typeof window === 'undefined') {
+      throw new Error('Authentication is not available during server-side rendering.');
+    }
+    if (!firebaseConfigured) {
       throw new Error('Firebase is not configured. Please set up your environment variables.');
     }
     await signOut(auth);
@@ -66,50 +75,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // Only run Firebase config check after component is mounted
-    if (!mounted) return;
+    // Only run Firebase config check after component is mounted and in browser
+    if (!mounted || typeof window === 'undefined') return;
 
-    // Check Firebase configuration by testing if Firebase app is properly initialized
-    const checkFirebaseConfig = () => {
-      try {
-        // Try to access the Firebase app configuration
-        const app = auth.app;
-        const config = app.options;
-        
-        // Check if all required config values are present
-        const isConfigured = !!(
-          config.apiKey &&
-          config.authDomain &&
-          config.projectId &&
-          config.storageBucket &&
-          config.messagingSenderId &&
-          config.appId
-        );
+    // Check Firebase configuration using the centralized function
+    try {
+      const configured = isFirebaseConfigured();
+      setFirebaseConfigured(configured);
+      
+      // Only set up auth listener if Firebase is configured
+      if (configured) {
+        try {
+          const unsubscribe = onAuthStateChanged(auth, (user) => {
+            setCurrentUser(user);
+            setLoading(false);
+          });
 
-        return isConfigured;
-      } catch (error) {
-        console.warn('Firebase config check failed:', error);
-        return false;
-      }
-    };
-
-    const configured = checkFirebaseConfig();
-    setIsFirebaseConfigured(configured);
-    
-    // Only set up auth listener if Firebase is configured
-    if (configured) {
-      try {
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-          setCurrentUser(user);
+          return unsubscribe;
+        } catch (error) {
+          console.warn('Firebase auth initialization failed:', error);
           setLoading(false);
-        });
-
-        return unsubscribe;
-      } catch (error) {
-        console.warn('Firebase auth initialization failed:', error);
+        }
+      } else {
+        console.warn('Firebase is not configured. Running in guest mode.');
         setLoading(false);
       }
-    } else {
+    } catch (error) {
+      console.warn('Firebase configuration check failed:', error);
+      setFirebaseConfigured(false);
       setLoading(false);
     }
   }, [mounted]);
@@ -120,7 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signup,
     login,
     logout,
-    isFirebaseConfigured,
+    isFirebaseConfigured: firebaseConfigured,
   };
 
   return (
