@@ -41,10 +41,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window === 'undefined') {
       throw new Error('Authentication is not available during server-side rendering.');
     }
-    if (!firebaseConfigured || !auth) {
+    const authInstance = auth();
+    if (!firebaseConfigured || !authInstance) {
       throw new Error('Firebase is not configured. Please set up your environment variables.');
     }
-    const { user } = await createUserWithEmailAndPassword(auth, email, password);
+    const { user } = await createUserWithEmailAndPassword(authInstance, email, password);
     await updateProfile(user, { displayName });
     setCurrentUser(user);
   }
@@ -53,11 +54,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window === 'undefined') {
       throw new Error('Authentication is not available during server-side rendering.');
     }
-    if (!firebaseConfigured || !auth) {
+    const authInstance = auth();
+    if (!firebaseConfigured || !authInstance) {
       throw new Error('Firebase is not configured. Please set up your environment variables.');
     }
     try {
-      const result = await signInWithEmailAndPassword(auth, email, password);
+      const result = await signInWithEmailAndPassword(authInstance, email, password);
       setCurrentUser(result.user);
     } catch (error: any) {
       console.error('Firebase auth error:', error);
@@ -69,10 +71,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window === 'undefined') {
       throw new Error('Authentication is not available during server-side rendering.');
     }
-    if (!firebaseConfigured || !auth) {
+    const authInstance = auth();
+    if (!firebaseConfigured || !authInstance) {
       throw new Error('Firebase is not configured. Please set up your environment variables.');
     }
-    await signOut(auth);
+    await signOut(authInstance);
   }
 
   useEffect(() => {
@@ -90,16 +93,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setFirebaseConfigured(configured);
       
       // Only set up auth listener if Firebase is configured
-      if (configured && auth) {
-        try {
-          const unsubscribe = onAuthStateChanged(auth, (user) => {
-            setCurrentUser(user);
-            setLoading(false);
-          });
+      if (configured) {
+        const authInstance = auth();
+        if (authInstance) {
+          try {
+            const unsubscribe = onAuthStateChanged(authInstance, (user) => {
+              setCurrentUser(user);
+              setLoading(false);
+            });
 
-          return unsubscribe;
-        } catch (error) {
-          console.warn('Firebase auth initialization failed:', error);
+            return unsubscribe;
+          } catch (error) {
+            console.warn('Firebase auth initialization failed:', error);
+            setLoading(false);
+          }
+        } else {
+          console.warn('Firebase auth instance not available');
           setLoading(false);
         }
       } else {
