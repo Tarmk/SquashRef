@@ -41,7 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window === 'undefined') {
       throw new Error('Authentication is not available during server-side rendering.');
     }
-    if (!firebaseConfigured) {
+    if (!firebaseConfigured || !auth) {
       throw new Error('Firebase is not configured. Please set up your environment variables.');
     }
     const { user } = await createUserWithEmailAndPassword(auth, email, password);
@@ -53,17 +53,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window === 'undefined') {
       throw new Error('Authentication is not available during server-side rendering.');
     }
-    if (!firebaseConfigured) {
+    if (!firebaseConfigured || !auth) {
       throw new Error('Firebase is not configured. Please set up your environment variables.');
     }
-    await signInWithEmailAndPassword(auth, email, password);
+    try {
+      const result = await signInWithEmailAndPassword(auth, email, password);
+      setCurrentUser(result.user);
+    } catch (error: any) {
+      console.error('Firebase auth error:', error);
+      throw error;
+    }
   }
 
   async function logout() {
     if (typeof window === 'undefined') {
       throw new Error('Authentication is not available during server-side rendering.');
     }
-    if (!firebaseConfigured) {
+    if (!firebaseConfigured || !auth) {
       throw new Error('Firebase is not configured. Please set up your environment variables.');
     }
     await signOut(auth);
@@ -84,7 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setFirebaseConfigured(configured);
       
       // Only set up auth listener if Firebase is configured
-      if (configured) {
+      if (configured && auth) {
         try {
           const unsubscribe = onAuthStateChanged(auth, (user) => {
             setCurrentUser(user);

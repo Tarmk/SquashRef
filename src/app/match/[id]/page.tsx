@@ -3,10 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { useAuth } from '../../../../contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../../../lib/firebase';
-import GameDetailModal from '../../../components/GameDetailModal';
+import { db } from '@/lib/firebase';
+import GameDetailModal from '@/components/GameDetailModal';
 
 interface MatchData {
   id: string;
@@ -62,7 +62,7 @@ export default function MatchDetailsPage() {
   }, [currentUser, matchId, router]);
 
   async function fetchMatch() {
-    if (!currentUser || !matchId) return;
+    if (!currentUser || !matchId || !db) return;
 
     try {
       const matchRef = doc(db, 'matches', matchId);

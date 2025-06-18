@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function ModeSelection() {
   const [selectedMode, setSelectedMode] = useState<string | null>(null);
@@ -18,7 +18,7 @@ export default function ModeSelection() {
     if (selectedMode === 'individual') {
       router.push('/match-format');
     } else if (selectedMode === 'tournament') {
-      router.push('/tournament');
+      router.push('/tournament/create');
     }
   };
 

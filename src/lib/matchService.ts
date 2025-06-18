@@ -169,7 +169,7 @@ export async function completeMatch(
     });
   } catch (error) {
     console.error('Error completing match:', error);
-    // Don't throw error, just log it
+    // Don't throw error, just log it for graceful degradation
   }
 }
 

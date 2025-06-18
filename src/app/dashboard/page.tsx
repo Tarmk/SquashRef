@@ -3,10 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useAuth } from '../../../contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from '../../../lib/firebase';
-import { cleanupOrphanedMatches } from '../../../lib/matchService';
+import { db, isFirebaseConfigured } from '@/lib/firebase';
+import { cleanupOrphanedMatches } from '@/lib/matchService';
 
 interface SavedMatch {
   id: string;
@@ -101,7 +101,14 @@ export default function DashboardPage() {
   };
 
   if (!currentUser) {
-    return <div>Loading...</div>;
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+        <div className="text-center">
+          <div className="text-2xl text-gray-600">Loading...</div>
+          <p className="text-gray-500 mt-2">Please wait while we verify your session...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -145,7 +152,7 @@ export default function DashboardPage() {
           </Link>
 
           <Link
-            href="/tournament"
+            href="/tournament/create"
             className="block p-6 bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 border-2 border-transparent hover:border-purple-300"
           >
             <div className="text-center">

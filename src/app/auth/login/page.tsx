@@ -3,14 +3,14 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useAuth } from '../../../../contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, currentUser } = useAuth();
   const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent) {
@@ -22,9 +22,11 @@ export default function LoginPage() {
       await login(email, password);
       router.push('/dashboard');
     } catch (error: any) {
-      setError('Failed to log in: ' + error.message);
+      console.error('Login error:', error);
+      setError(error.message || 'Failed to log in. Please check your credentials.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   return (
