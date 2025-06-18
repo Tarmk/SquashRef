@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { saveNewMatch, updateMatch, completeMatch, MatchData } from '../lib/matchService';
 import { Timestamp } from 'firebase/firestore';
+import { isFirebaseConfigured } from '../lib/firebase';
 
 interface UseMatchPersistenceParams {
   player1: string;
@@ -47,47 +48,16 @@ interface UseMatchPersistenceParams {
 }
 
 export function useMatchPersistence(params: UseMatchPersistenceParams) {
-  const { currentUser, isFirebaseConfigured } = useAuth();
+  const { currentUser } = useAuth();
   const matchIdRef = useRef<string | null>(null);
-  const initialSaveRef = useRef(false);
-  const matchParamsRef = useRef<{
-    player1: string;
-    player2: string;
-    matchFormat: string;
-    matchStartTime: Date;
-  } | null>(null);
-  const isCreatingMatchRef = useRef(false);
 
-  // Save new match when user is logged in and match starts (ONLY ONCE)
+  // Create new match when the hook is first used
   useEffect(() => {
-    // Only proceed if we have the required conditions and haven't created a match yet
-    if (!currentUser || !isFirebaseConfigured || initialSaveRef.current || isCreatingMatchRef.current) return;
+    if (!currentUser || !isFirebaseConfigured()) return;
 
-    // Only create a new match if this is truly a new match (different parameters)
-    const currentParams = {
-      player1: params.player1,
-      player2: params.player2,
-      matchFormat: params.matchFormat,
-      matchStartTime: params.matchStartTime,
-    };
-
-    // Check if this is the same match as before
-    if (matchParamsRef.current && 
-        matchParamsRef.current.player1 === currentParams.player1 &&
-        matchParamsRef.current.player2 === currentParams.player2 &&
-        matchParamsRef.current.matchFormat === currentParams.matchFormat &&
-        Math.abs(matchParamsRef.current.matchStartTime.getTime() - currentParams.matchStartTime.getTime()) < 60000) { // Within 1 minute
-      console.log('Skipping match creation - same match detected');
-      return;
-    }
-
-    // Set flag to prevent concurrent creation
-    isCreatingMatchRef.current = true;
-
-    const saveInitialMatch = async () => {
+    const createNewMatch = async () => {
       try {
-        console.log('Creating new match...', currentParams);
-        const matchData: Omit<MatchData, 'createdAt' | 'updatedAt'> = {
+        const newMatchData: Omit<MatchData, 'createdAt' | 'updatedAt'> = {
           userId: currentUser.uid,
           player1: params.player1,
           player2: params.player2,
@@ -99,24 +69,24 @@ export function useMatchPersistence(params: UseMatchPersistenceParams) {
           totalDuration: 0,
         };
 
-        const matchId = await saveNewMatch(matchData);
+        const matchId = await saveNewMatch(newMatchData);
         matchIdRef.current = matchId;
-        initialSaveRef.current = true;
-        matchParamsRef.current = currentParams;
-        console.log('✅ New match created with ID:', matchId, 'for', currentParams.player1, 'vs', currentParams.player2);
+        console.log('🆕 Created new match:', matchId);
       } catch (error) {
-        console.error('❌ Error saving initial match:', error);
-      } finally {
-        isCreatingMatchRef.current = false;
+        console.error('Error creating match:', error);
+        // Don't throw error to prevent app crash if Firebase isn't configured
       }
     };
 
-    saveInitialMatch();
-  }, [currentUser?.uid, isFirebaseConfigured, params.player1, params.player2, params.matchFormat]); // More specific dependencies
+    // Only create match if we don't already have one
+    if (!matchIdRef.current) {
+      createNewMatch();
+    }
+  }, [currentUser, params.player1, params.player2, params.matchFormat]); // More specific dependencies
 
   // Update match state periodically
   useEffect(() => {
-    if (!currentUser || !isFirebaseConfigured || !matchIdRef.current) return;
+    if (!currentUser || !isFirebaseConfigured() || !matchIdRef.current) return;
 
     const updateMatchState = async () => {
       try {
@@ -130,6 +100,7 @@ export function useMatchPersistence(params: UseMatchPersistenceParams) {
         console.log('📝 Match updated:', matchIdRef.current);
       } catch (error) {
         console.error('Error updating match:', error);
+        // Don't throw error to prevent app crash
       }
     };
 
@@ -142,11 +113,11 @@ export function useMatchPersistence(params: UseMatchPersistenceParams) {
     }
 
     return () => clearInterval(interval);
-  }, [currentUser, isFirebaseConfigured, params.gameHistory, params.currentGameState, params.totalDuration]);
+  }, [currentUser, params.gameHistory, params.currentGameState, params.totalDuration]);
 
   // Complete match when match ends
   useEffect(() => {
-    if (!currentUser || !isFirebaseConfigured || !matchIdRef.current || !params.isComplete) return;
+    if (!currentUser || !isFirebaseConfigured() || !matchIdRef.current || !params.isComplete) return;
 
     const completeMatchState = async () => {
       try {
@@ -159,14 +130,15 @@ export function useMatchPersistence(params: UseMatchPersistenceParams) {
         console.log('🏆 Match completed and saved:', matchIdRef.current);
       } catch (error) {
         console.error('Error completing match:', error);
+        // Don't throw error to prevent app crash
       }
     };
 
     completeMatchState();
-  }, [currentUser, isFirebaseConfigured, params.isComplete, params.gameHistory, params.matchWinner, params.totalDuration]);
+  }, [currentUser, params.isComplete, params.gameHistory, params.matchWinner, params.totalDuration]);
 
   return {
     matchId: matchIdRef.current,
-    isUserLoggedIn: !!currentUser && isFirebaseConfigured,
+    isUserLoggedIn: !!currentUser && isFirebaseConfigured(),
   };
 } 
