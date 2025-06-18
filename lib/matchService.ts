@@ -11,7 +11,7 @@ import {
   getDocs,
   deleteDoc
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, isFirebaseConfigured } from './firebase';
 
 export interface MatchData {
   userId: string;
@@ -58,33 +58,63 @@ export interface MatchData {
 }
 
 export async function saveNewMatch(matchData: Omit<MatchData, 'createdAt' | 'updatedAt'>): Promise<string> {
+  if (!isFirebaseConfigured()) {
+    console.warn('Firebase is not configured, cannot save match');
+    return 'local-match-' + Date.now(); // Return a local ID for guest mode
+  }
+
+  if (!db) {
+    console.warn('Firestore database is not available');
+    return 'local-match-' + Date.now();
+  }
+
   try {
     const docRef = await addDoc(collection(db, 'matches'), {
       ...matchData,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+    console.log('🆕 New match created:', docRef.id);
     return docRef.id;
   } catch (error) {
     console.error('Error saving match:', error);
-    throw error;
+    return 'local-match-' + Date.now(); // Fallback to local ID
   }
 }
 
-export async function updateMatch(matchId: string, matchData: Partial<MatchData>): Promise<void> {
+export async function updateMatch(matchId: string, updateData: Partial<MatchData>): Promise<void> {
+  if (!isFirebaseConfigured()) {
+    console.warn('Firebase is not configured, cannot update match');
+    return;
+  }
+
+  if (!db) {
+    console.warn('Firestore database is not available');
+    return;
+  }
+
+  // Don't update local matches
+  if (matchId.startsWith('local-match-')) {
+    return;
+  }
+
   try {
     const matchRef = doc(db, 'matches', matchId);
     await updateDoc(matchRef, {
-      ...matchData,
+      ...updateData,
       updatedAt: serverTimestamp(),
     });
   } catch (error) {
     console.error('Error updating match:', error);
-    throw error;
+    // Don't throw error, just log it
   }
 }
 
 export async function getMatch(matchId: string): Promise<MatchData | null> {
+  if (!isFirebaseConfigured() || !db) {
+    return null;
+  }
+
   try {
     const matchRef = doc(db, 'matches', matchId);
     const matchSnap = await getDoc(matchRef);
@@ -107,7 +137,7 @@ export async function getMatch(matchId: string): Promise<MatchData | null> {
     }
   } catch (error) {
     console.error('Error getting match:', error);
-    throw error;
+    return null;
   }
 }
 
@@ -117,6 +147,16 @@ export async function completeMatch(
   matchWinner: string,
   totalDuration: number
 ): Promise<void> {
+  if (!isFirebaseConfigured() || !db) {
+    console.warn('Firebase not available, cannot complete match');
+    return;
+  }
+
+  // Don't update local matches
+  if (matchId.startsWith('local-match-')) {
+    return;
+  }
+
   try {
     const matchRef = doc(db, 'matches', matchId);
     await updateDoc(matchRef, {
@@ -129,13 +169,18 @@ export async function completeMatch(
     });
   } catch (error) {
     console.error('Error completing match:', error);
-    throw error;
+    // Don't throw error, just log it
   }
 }
 
 export async function cleanupOrphanedMatches(userId: string): Promise<void> {
+  if (!isFirebaseConfigured()) {
+    console.warn('Firebase is not configured, skipping cleanup');
+    return;
+  }
+
   if (!db) {
-    throw new Error('Firebase is not configured');
+    throw new Error('Firestore database is not available');
   }
 
   try {
@@ -181,6 +226,5 @@ export async function cleanupOrphanedMatches(userId: string): Promise<void> {
     }
   } catch (error) {
     console.error('Error cleaning up orphaned matches:', error);
-    throw error;
   }
 } 

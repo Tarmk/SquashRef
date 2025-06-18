@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '../../../contexts/AuthContext';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../../../lib/firebase';
+import { db, isFirebaseConfigured } from '../../../lib/firebase';
 import { cleanupOrphanedMatches } from '../../../lib/matchService';
 
 interface SavedMatch {
@@ -23,8 +23,9 @@ interface SavedMatch {
 
 export default function DashboardPage() {
   const { currentUser, logout } = useAuth();
-  const [matches, setMatches] = useState<SavedMatch[]>([]);
+  const [savedMatches, setSavedMatches] = useState<SavedMatch[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -33,42 +34,52 @@ export default function DashboardPage() {
       return;
     }
 
-    fetchMatches();
-    
-    // Clean up any orphaned matches automatically
-    cleanupOrphanedMatches(currentUser.uid).catch(error => {
-      console.warn('Failed to cleanup orphaned matches:', error);
-    });
+    fetchSavedMatches();
   }, [currentUser, router]);
 
-  async function fetchMatches() {
+  async function fetchSavedMatches() {
     if (!currentUser) return;
 
+    // Check if Firebase is configured
+    if (!isFirebaseConfigured() || !db) {
+      console.warn('Firebase is not configured, no saved matches available');
+      setLoading(false);
+      return;
+    }
+
     try {
+      // Clean up orphaned matches first
+      await cleanupOrphanedMatches(currentUser.uid);
+
+      // Then fetch matches
       const matchesRef = collection(db, 'matches');
-      const q = query(
-        matchesRef,
-        where('userId', '==', currentUser.uid)
-      );
-      
+      const q = query(matchesRef, where('userId', '==', currentUser.uid));
       const querySnapshot = await getDocs(q);
-      const fetchedMatches: SavedMatch[] = [];
       
+      const matches: SavedMatch[] = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        fetchedMatches.push({
+        matches.push({
           id: doc.id,
-          ...data,
+          player1: data.player1,
+          player2: data.player2,
+          matchFormat: data.matchFormat,
+          matchWinner: data.matchWinner,
+          isComplete: data.isComplete,
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),
-        } as SavedMatch);
+          totalDuration: data.totalDuration || 0,
+          gameHistory: data.gameHistory || [],
+        });
       });
+
+      // Sort by most recent first
+      matches.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
       
-      fetchedMatches.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
-      
-      setMatches(fetchedMatches);
+      setSavedMatches(matches);
     } catch (error) {
       console.error('Error fetching matches:', error);
+      setError('Failed to load saved matches. Please check your connection.');
     } finally {
       setLoading(false);
     }
@@ -157,7 +168,11 @@ export default function DashboardPage() {
             <div className="text-center py-8">
               <div className="text-gray-500">Loading matches...</div>
             </div>
-          ) : matches.length === 0 ? (
+          ) : error ? (
+            <div className="text-center py-8">
+              <div className="text-red-500">{error}</div>
+            </div>
+          ) : savedMatches.length === 0 ? (
             <div className="text-center py-8">
               <div className="text-gray-500 mb-4">No matches found</div>
               <p className="text-sm text-gray-400">
@@ -166,7 +181,7 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="grid gap-4">
-              {matches.map((match) => (
+              {savedMatches.map((match) => (
                 <div
                   key={match.id}
                   className="border border-gray-200 rounded-lg p-6 hover:bg-gray-50 transition-colors"

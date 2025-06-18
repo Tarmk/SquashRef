@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, Auth } from 'firebase/auth';
+import { getAuth as getFirebaseAuth, Auth } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -33,11 +33,11 @@ export const isFirebaseConfigured = () => {
 let app: any = null;
 export const getFirebaseApp = () => {
   if (!isBrowser) {
-    throw new Error('Firebase cannot be initialized during server-side rendering or build time.');
+    return null;
   }
   
   if (!isFirebaseConfigured()) {
-    throw new Error('Firebase is not configured. Please set up your environment variables.');
+    return null;
   }
   
   if (!app) {
@@ -52,40 +52,62 @@ export const getFirebaseApp = () => {
   return app;
 };
 
-// Lazy getters for Firebase services
+// Initialize Firebase services directly
 let authInstance: Auth | null = null;
+let dbInstance: Firestore | null = null;
+
+export const getAuthInstance = () => {
+  if (!isBrowser || !isFirebaseConfigured()) {
+    return null;
+  }
+  
+  if (!authInstance) {
+    const app = getFirebaseApp();
+    if (app) {
+      authInstance = getFirebaseAuth(app);
+    }
+  }
+  
+  return authInstance;
+};
+
+export const getDb = () => {
+  if (!isBrowser || !isFirebaseConfigured()) {
+    return null;
+  }
+  
+  if (!dbInstance) {
+    const app = getFirebaseApp();
+    if (app) {
+      dbInstance = getFirestore(app);
+    }
+  }
+  
+  return dbInstance;
+};
+
+// Export the actual instances for backward compatibility
 export const auth = new Proxy({} as Auth, {
   get(target, prop) {
     if (!isBrowser) {
-      // Return a dummy object during SSR to prevent errors
+      // Return a no-op function or undefined for SSR
       return undefined;
     }
     
-    if (!authInstance) {
-      if (!isFirebaseConfigured()) {
-        throw new Error('Firebase is not configured. Please set up your environment variables.');
-      }
-      authInstance = getAuth(getFirebaseApp());
-    }
-    return (authInstance as any)[prop];
+    const instance = getAuthInstance();
+    return instance ? (instance as any)[prop] : undefined;
   }
 });
 
-let dbInstance: Firestore | null = null;
 export const db = new Proxy({} as Firestore, {
   get(target, prop) {
     if (!isBrowser) {
-      // Return a dummy object during SSR to prevent errors
+      // Return a no-op function or undefined for SSR
       return undefined;
     }
     
-    if (!dbInstance) {
-      if (!isFirebaseConfigured()) {
-        throw new Error('Firebase is not configured. Please set up your environment variables.');
-      }
-      dbInstance = getFirestore(getFirebaseApp());
-    }
-    return (dbInstance as any)[prop];
+    const instance = getDb();
+    return instance ? (instance as any)[prop] : undefined;
   }
 });
 

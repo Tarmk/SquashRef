@@ -338,9 +338,21 @@ function GamePageContent() {
     if (gameWinner) {
       setGameProcessed(false); // Reset for next game
       
+      // Hide break timer and reset break state
+      setShowBreakTimer(false);
+      setBreakTimeRemaining(60);
+      setTimerRunning(false);
+      
+      // Reset scores for new game
+      setPlayer1Score(0);
+      setPlayer2Score(0);
+      
       // Reset game timer for new game
       setGameStartTime(new Date());
       setCurrentGameDuration(0);
+      
+      // Update current server for next game (winner of previous game serves first)
+      setCurrentServer(gameWinner);
       
       // Show side selection for new game start
       setAwaitingGameStartSideSelection(true);
