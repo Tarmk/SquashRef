@@ -52,11 +52,11 @@ export const getFirebaseApp = () => {
   return app;
 };
 
-// Initialize Firebase services directly
+// Initialize Firebase services with proper error handling
 let authInstance: Auth | null = null;
 let dbInstance: Firestore | null = null;
 
-export const getAuthInstance = () => {
+export const getAuthInstance = (): Auth | null => {
   if (!isBrowser || !isFirebaseConfigured()) {
     return null;
   }
@@ -71,7 +71,7 @@ export const getAuthInstance = () => {
   return authInstance;
 };
 
-export const getDb = () => {
+export const getDbInstance = (): Firestore | null => {
   if (!isBrowser || !isFirebaseConfigured()) {
     return null;
   }
@@ -86,29 +86,8 @@ export const getDb = () => {
   return dbInstance;
 };
 
-// Export the actual instances for backward compatibility
-export const auth = new Proxy({} as Auth, {
-  get(target, prop) {
-    if (!isBrowser) {
-      // Return a no-op function or undefined for SSR
-      return undefined;
-    }
-    
-    const instance = getAuthInstance();
-    return instance ? (instance as any)[prop] : undefined;
-  }
-});
-
-export const db = new Proxy({} as Firestore, {
-  get(target, prop) {
-    if (!isBrowser) {
-      // Return a no-op function or undefined for SSR
-      return undefined;
-    }
-    
-    const instance = getDb();
-    return instance ? (instance as any)[prop] : undefined;
-  }
-});
+// Export getter functions instead of direct instances
+export const auth = getAuthInstance;
+export const db = getDbInstance;
 
 export default { getFirebaseApp, isFirebaseConfigured }; 

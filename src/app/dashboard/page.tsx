@@ -41,7 +41,8 @@ export default function DashboardPage() {
     if (!currentUser) return;
 
     // Check if Firebase is configured
-    if (!isFirebaseConfigured() || !db) {
+    const dbInstance = db();
+    if (!isFirebaseConfigured() || !dbInstance) {
       console.warn('Firebase is not configured, no saved matches available');
       setLoading(false);
       return;
@@ -52,7 +53,7 @@ export default function DashboardPage() {
       await cleanupOrphanedMatches(currentUser.uid);
 
       // Then fetch matches
-      const matchesRef = collection(db, 'matches');
+      const matchesRef = collection(dbInstance, 'matches');
       const q = query(matchesRef, where('userId', '==', currentUser.uid));
       const querySnapshot = await getDocs(q);
       
