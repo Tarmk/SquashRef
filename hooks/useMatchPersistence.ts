@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '../src/contexts/AuthContext';
 import { saveNewMatch, updateMatch, completeMatch, MatchData } from '../src/lib/matchService';
 import { Timestamp } from 'firebase/firestore';
-import { isFirebaseConfigured } from '../lib/firebase';
+import { isFirebaseConfigured } from '../src/lib/firebase';
 
 interface UseMatchPersistenceParams {
   player1: string;
