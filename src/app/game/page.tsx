@@ -23,6 +23,7 @@ function GamePageContent() {
   const [player2Games, setPlayer2Games] = useState(parseInt(searchParams.get('player2Games') || '0'));
   
   // Timing tracking
+  
   const [matchStartTime] = useState<Date>(new Date());
   const [gameStartTime, setGameStartTime] = useState<Date>(new Date());
   const [currentGameDuration, setCurrentGameDuration] = useState<number>(0);

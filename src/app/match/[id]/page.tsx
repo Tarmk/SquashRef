@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import GameDetailModal from '@/components/GameDetailModal';
+import Header from '@/components/Header';
 
 interface MatchData {
   id: string;
@@ -62,10 +63,13 @@ export default function MatchDetailsPage() {
   }, [currentUser, matchId, router]);
 
   async function fetchMatch() {
-    if (!currentUser || !matchId || !db) return;
+    if (!currentUser || !matchId) return;
+
+    const dbInstance = db();
+    if (!dbInstance) return;
 
     try {
-      const matchRef = doc(db, 'matches', matchId);
+      const matchRef = doc(dbInstance, 'matches', matchId);
       const matchSnap = await getDoc(matchRef);
       
       if (matchSnap.exists()) {
@@ -341,17 +345,16 @@ export default function MatchDetailsPage() {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <Header 
+        showBackButton={true} 
+        backUrl="/dashboard" 
+        title={`${match.player1} vs ${match.player2}`}
+      />
+      <div className="max-w-6xl mx-auto p-4">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
-            <Link
-              href="/dashboard"
-              className="text-blue-600 hover:text-blue-800 font-medium mb-2 inline-block"
-            >
-              ← Back to Dashboard
-            </Link>
             <h1 className="text-4xl font-bold text-gray-900 mb-2">
               Match Details
             </h1>

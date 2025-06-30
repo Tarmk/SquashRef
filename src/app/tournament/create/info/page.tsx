@@ -1,7 +1,10 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useState, Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
+import { autoSaveDraft, loadTournamentDraft, finalizeTournamentDraft } from '@/lib/tournamentService';
+import Header from '@/components/Header';
 
 interface TournamentInfo {
   name: string;
@@ -17,12 +20,14 @@ interface TournamentInfo {
 }
 
 function TournamentInfoContent() {
+  const { currentUser } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   
   const tournamentType = searchParams.get('type') || 'private';
   const tournamentFormat = searchParams.get('format') || 'round-robin';
   const tournamentId = searchParams.get('id') || '';
+  const draftId = searchParams.get('draft') || '';
   
   const [tournamentInfo, setTournamentInfo] = useState<TournamentInfo>({
     name: '',
@@ -36,6 +41,100 @@ function TournamentInfoContent() {
     prizes: '',
     rules: ''
   });
+  
+  const [currentDraftId, setCurrentDraftId] = useState<string | null>(draftId || null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving' | 'error' | null>(null);
+
+  // Load existing draft if editing
+  useEffect(() => {
+    if (draftId && currentUser) {
+      loadExistingDraft();
+    }
+  }, [draftId, currentUser]);
+
+  const loadExistingDraft = async () => {
+    if (!draftId) return;
+    
+    setIsLoading(true);
+    try {
+      const draft = await loadTournamentDraft(draftId);
+      if (draft && draft.hostId === currentUser?.uid) {
+        setTournamentInfo({
+          name: draft.name || '',
+          startDate: draft.startDate ? draft.startDate.toISOString().split('T')[0] : '',
+          endDate: draft.endDate ? draft.endDate.toISOString().split('T')[0] : '',
+          venue: draft.venue || '',
+          address: draft.address || '',
+          description: draft.description || '',
+          contactInfo: draft.contactInfo || '',
+          entryFee: draft.entryFee || '',
+          prizes: draft.prizes || '',
+          rules: draft.rules || ''
+        });
+        setCurrentDraftId(draft.id || null);
+      }
+    } catch (error) {
+      console.error('Error loading draft:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Auto-save functionality
+  const performAutoSave = async () => {
+    if (!currentUser || !tournamentInfo.name.trim()) return;
+
+    setAutoSaveStatus('saving');
+    try {
+      const draftData: any = {
+        name: tournamentInfo.name,
+        type: tournamentType as 'public' | 'private',
+        format: tournamentFormat as 'round-robin' | 'monrad',
+        draftData: {
+          step: 'info' as const,
+          formData: tournamentInfo
+        }
+      };
+
+      // Only add fields that have values
+      if (tournamentInfo.venue?.trim()) draftData.venue = tournamentInfo.venue;
+      if (tournamentInfo.address?.trim()) draftData.address = tournamentInfo.address;
+      if (tournamentInfo.description?.trim()) draftData.description = tournamentInfo.description;
+      if (tournamentInfo.contactInfo?.trim()) draftData.contactInfo = tournamentInfo.contactInfo;
+      if (tournamentInfo.entryFee?.trim()) draftData.entryFee = tournamentInfo.entryFee;
+      if (tournamentInfo.prizes?.trim()) draftData.prizes = tournamentInfo.prizes;
+      if (tournamentInfo.rules?.trim()) draftData.rules = tournamentInfo.rules;
+      if (tournamentInfo.startDate) draftData.startDate = new Date(tournamentInfo.startDate);
+      if (tournamentInfo.endDate) draftData.endDate = new Date(tournamentInfo.endDate);
+
+      const savedDraftId = await autoSaveDraft(
+        currentUser.uid,
+        currentUser.displayName || currentUser.email || 'User',
+        draftData,
+        currentDraftId || undefined
+      );
+      
+      if (!currentDraftId) {
+        setCurrentDraftId(savedDraftId);
+      }
+      
+      setAutoSaveStatus('saved');
+      setTimeout(() => setAutoSaveStatus(null), 2000);
+    } catch (error) {
+      console.error('Auto-save error:', error);
+      setAutoSaveStatus('error');
+      setTimeout(() => setAutoSaveStatus(null), 3000);
+    }
+  };
+
+  // Trigger auto-save when form data changes
+  useEffect(() => {
+    if (currentUser && tournamentInfo.name.trim()) {
+      const timer = setTimeout(performAutoSave, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [tournamentInfo, currentUser, tournamentType, tournamentFormat]);
 
   const handleInputChange = (field: keyof TournamentInfo, value: string) => {
     setTournamentInfo(prev => ({
@@ -44,27 +143,93 @@ function TournamentInfoContent() {
     }));
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     // Validate required fields
     if (!tournamentInfo.name.trim()) {
       alert('Please enter a tournament name');
       return;
     }
 
-    // Create URL parameters with all data
-    const params = new URLSearchParams({
-      type: tournamentType,
-      format: tournamentFormat,
-      tournamentInfo: JSON.stringify(tournamentInfo),
-      ...(tournamentId && { id: tournamentId })
-    });
+    if (!currentUser) {
+      alert('Please sign in to continue');
+      return;
+    }
 
-    if (tournamentType === 'public') {
-      // For public tournaments, go to tournament created page
-      router.push(`/tournament/create/created?${params.toString()}`);
-    } else {
-      // For private tournaments, go to player management
-      router.push(`/tournament/create/players?${params.toString()}`);
+    try {
+      setIsLoading(true);
+
+      let finalDraftId = currentDraftId;
+
+              // Save current state as draft if not already saved
+        if (!finalDraftId) {
+          const draftData: any = {
+            name: tournamentInfo.name,
+            type: tournamentType as 'public' | 'private',
+            format: tournamentFormat as 'round-robin' | 'monrad',
+            draftData: {
+              step: 'info' as const,
+              formData: tournamentInfo
+            }
+          };
+
+          // Only add fields that have values
+          if (tournamentInfo.venue?.trim()) draftData.venue = tournamentInfo.venue;
+          if (tournamentInfo.address?.trim()) draftData.address = tournamentInfo.address;
+          if (tournamentInfo.description?.trim()) draftData.description = tournamentInfo.description;
+          if (tournamentInfo.contactInfo?.trim()) draftData.contactInfo = tournamentInfo.contactInfo;
+          if (tournamentInfo.entryFee?.trim()) draftData.entryFee = tournamentInfo.entryFee;
+          if (tournamentInfo.prizes?.trim()) draftData.prizes = tournamentInfo.prizes;
+          if (tournamentInfo.rules?.trim()) draftData.rules = tournamentInfo.rules;
+          if (tournamentInfo.startDate) draftData.startDate = new Date(tournamentInfo.startDate);
+          if (tournamentInfo.endDate) draftData.endDate = new Date(tournamentInfo.endDate);
+
+          finalDraftId = await autoSaveDraft(
+            currentUser.uid,
+            currentUser.displayName || currentUser.email || 'User',
+            draftData
+          );
+          setCurrentDraftId(finalDraftId);
+        }
+
+      // Create URL parameters with all data
+      const params = new URLSearchParams({
+        type: tournamentType,
+        format: tournamentFormat,
+        tournamentInfo: JSON.stringify(tournamentInfo),
+        ...(tournamentId && { id: tournamentId }),
+        ...(finalDraftId && { draft: finalDraftId })
+      });
+
+              if (tournamentType === 'public') {
+          // For public tournaments, finalize the draft and go to created page
+          if (finalDraftId) {
+            const finalData: any = {
+              name: tournamentInfo.name,
+            };
+            
+            // Only add fields that have values
+            if (tournamentInfo.venue?.trim()) finalData.venue = tournamentInfo.venue;
+            if (tournamentInfo.address?.trim()) finalData.address = tournamentInfo.address;
+            if (tournamentInfo.description?.trim()) finalData.description = tournamentInfo.description;
+            if (tournamentInfo.contactInfo?.trim()) finalData.contactInfo = tournamentInfo.contactInfo;
+            if (tournamentInfo.entryFee?.trim()) finalData.entryFee = tournamentInfo.entryFee;
+            if (tournamentInfo.prizes?.trim()) finalData.prizes = tournamentInfo.prizes;
+            if (tournamentInfo.rules?.trim()) finalData.rules = tournamentInfo.rules;
+            if (tournamentInfo.startDate) finalData.startDate = new Date(tournamentInfo.startDate);
+            if (tournamentInfo.endDate) finalData.endDate = new Date(tournamentInfo.endDate);
+            
+            await finalizeTournamentDraft(finalDraftId, finalData);
+          }
+          router.push(`/tournament/create/created?${params.toString()}`);
+        } else {
+          // For private tournaments, go to player management
+          router.push(`/tournament/create/players?${params.toString()}`);
+        }
+    } catch (error) {
+      console.error('Error saving tournament:', error);
+      alert('Failed to save tournament. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -75,13 +240,42 @@ function TournamentInfoContent() {
   const isFormValid = tournamentInfo.name.trim() !== '';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <Header 
+        showBackButton={true} 
+        backUrl="/tournament/create/format" 
+        title="Tournament Information"
+      />
+      <div className="max-w-4xl mx-auto p-4">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            📋 Tournament Information
-          </h1>
+          <div className="flex justify-between items-start mb-4">
+            <div className="flex-1"></div>
+            <div className="flex-1">
+              <h1 className="text-4xl font-bold text-gray-900 mb-4">
+                📋 Tournament Information
+              </h1>
+            </div>
+            <div className="flex-1 flex justify-end">
+              {/* Auto-save Status */}
+              {autoSaveStatus && (
+                <div className={`
+                  px-3 py-1 rounded-full text-xs font-medium flex items-center space-x-1
+                  ${autoSaveStatus === 'saved' 
+                    ? 'bg-green-100 text-green-800 border border-green-200' 
+                    : autoSaveStatus === 'saving'
+                    ? 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+                    : 'bg-red-100 text-red-800 border border-red-200'
+                  }
+                `}>
+                  {autoSaveStatus === 'saved' && <span>✓ Draft Saved</span>}
+                  {autoSaveStatus === 'saving' && <span>💾 Saving Draft...</span>}
+                  {autoSaveStatus === 'error' && <span>⚠️ Save Failed</span>}
+                </div>
+              )}
+            </div>
+          </div>
+          
           <p className="text-lg text-gray-600 mb-2">
             Add details about your {tournamentFormat === 'round-robin' ? 'Round Robin' : 'Monrad'} tournament
           </p>
@@ -93,8 +287,23 @@ function TournamentInfoContent() {
                   ID: <span className="font-mono">{tournamentId}</span>
                 </span>
               )}
+              {currentDraftId && (
+                <span className="ml-3">
+                  <span className="text-red-600 font-medium">DRAFT</span>
+                </span>
+              )}
             </p>
           </div>
+          
+          {/* Loading indicator */}
+          {isLoading && (
+            <div className="mt-4">
+              <div className="inline-flex items-center px-4 py-2 bg-gray-100 rounded-lg">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                <span className="text-sm text-gray-600">Loading...</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Required Information */}
@@ -310,19 +519,28 @@ function TournamentInfoContent() {
           
           <button
             onClick={handleContinue}
-            disabled={!isFormValid}
+            disabled={!isFormValid || isLoading}
             className={`
-              flex-2 px-8 py-3 rounded-lg font-semibold transition-all duration-300
-              ${isFormValid
+              flex-2 px-8 py-3 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center
+              ${isFormValid && !isLoading
                 ? 'bg-blue-500 hover:bg-blue-600 text-white transform hover:scale-105'
                 : 'bg-gray-300 text-gray-500 cursor-not-allowed'
               }
             `}
           >
-            {tournamentType === 'public' 
-              ? 'Create Tournament & Generate QR' 
-              : 'Continue to Player Management'
-            } →
+            {isLoading ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Saving...
+              </>
+            ) : (
+              <>
+                {tournamentType === 'public' 
+                  ? 'Create Tournament & Generate QR' 
+                  : 'Continue to Player Management'
+                } →
+              </>
+            )}
           </button>
         </div>
 

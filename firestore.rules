@@ -1,0 +1,43 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow users to read and write their own matches
+    match /matches/{matchId} {
+      allow read, write: if request.auth != null && 
+        (resource == null || resource.data.userId == request.auth.uid);
+    }
+    
+    // Allow users to manage tournaments they host (including drafts)
+    match /tournaments/{tournamentId} {
+      allow read: if request.auth != null && 
+        (resource.data.type == 'public' || 
+         resource.data.hostId == request.auth.uid);
+      allow write: if request.auth != null && 
+        (resource == null || resource.data.hostId == request.auth.uid);
+    }
+    
+    // Allow authenticated users to read public tournaments
+    match /tournaments/{tournamentId} {
+      allow read: if request.auth != null && resource.data.type == 'public';
+    }
+    
+    // Allow users to manage their own tournament players/participants
+    match /tournaments/{tournamentId}/players/{playerId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && 
+        (request.auth.uid == resource.data.userId || 
+         get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.hostId == request.auth.uid);
+    }
+    
+    // Allow users to read and write their own user profile data
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Allow authenticated users to read other users' basic profile info (for tournaments)
+    match /users/{userId} {
+      allow read: if request.auth != null;
+    }
+  }
+} 
