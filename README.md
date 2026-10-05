@@ -24,7 +24,7 @@ npm install
 npm run dev
 ```
 
-Create a Firebase project and put its web config in `.env.local`:
+Create a Firebase project and put its web config in `.env.local` (`cp .env.example .env.local`):
 
 ```
 NEXT_PUBLIC_FIREBASE_API_KEY=
