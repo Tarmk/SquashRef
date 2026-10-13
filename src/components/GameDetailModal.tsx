@@ -1,6 +1,6 @@
 'use client';
 
-import { escapeHtml, formatDuration } from '@/lib/scoring';
+import { escapeHtml, formatDuration, type TieBreak } from '@/lib/scoring';
 import { useState } from 'react';
 
 interface GameData {
@@ -23,11 +23,13 @@ interface GameDetailModalProps {
   game: GameData;
   player1: string;
   player2: string;
+  /** 10-10 rule the match was played with. */
+  tieBreak?: TieBreak;
   isOpen: boolean;
   onClose: () => void;
 }
 
-export default function GameDetailModal({ game, player1, player2, isOpen, onClose }: GameDetailModalProps) {
+export default function GameDetailModal({ game, player1, player2, tieBreak = 'cap-15', isOpen, onClose }: GameDetailModalProps) {
   const [showFullTranscript, setShowFullTranscript] = useState(false);
 
   if (!isOpen) return null;
@@ -212,8 +214,10 @@ export default function GameDetailModal({ game, player1, player2, isOpen, onClos
               <div>
                 <h4 className="font-medium text-blue-900 mb-1">Squash Scoring Rules</h4>
                 <p className="text-sm text-blue-800">
-                  Games are played to <strong>11 points</strong> with a <strong>win-by-2 rule</strong>. 
-                  If tied at 10-10, play continues until one player leads by 2 points, or until someone reaches <strong>15 points</strong> (maximum).
+                  Games are played to <strong>11 points</strong> with a <strong>win-by-2 rule</strong>.{' '}
+                  {tieBreak === 'cap-15'
+                    ? <>If tied at 10-10, play continues until one player leads by 2 points, or until someone reaches <strong>15 points</strong>.</>
+                    : <>If tied at 10-10, play continues until one player leads by 2 points.</>}
                 </p>
               </div>
             </div>

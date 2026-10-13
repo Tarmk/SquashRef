@@ -2,9 +2,9 @@
  * Squash scoring rules (point-a-rally to 11).
  *
  * - Every rally scores a point, whoever served.
- * - A game is won at 11 with a two-point lead. This app also caps a game at 15
- *   (first to 15 wins after 10-10), which keeps club and school matches on
- *   time. Set POINT_CAP to Infinity for the PSA/WSF rule with no cap.
+ * - A game is won at 11 with a two-point lead (the WSF/PSA rule). Some club and
+ *   school events cap games at 15 to keep to time; the referee picks which on
+ *   the match format screen (see TieBreak).
  * - The server keeps serving while they win rallies, switching sides each time.
  * - If the receiver wins the rally ("hand-out") they become the server and may
  *   choose which side to serve from.
@@ -16,11 +16,31 @@ export type MatchFormat = 'best-of-3' | 'best-of-5';
 export const POINTS_PER_GAME = 11;
 export const POINT_CAP = 15;
 
+/** What happens at 10-10: play on until someone leads by two (official), or first to 15 wins. */
+export type TieBreak = 'win-by-two' | 'cap-15';
+export const DEFAULT_TIE_BREAK: TieBreak = 'win-by-two';
+
+export function isTieBreak(value: unknown): value is TieBreak {
+  return value === 'win-by-two' || value === 'cap-15';
+}
+
+/** The score at which a game ends regardless of the margin. */
+export function capFor(tieBreak: TieBreak): number {
+  return tieBreak === 'cap-15' ? POINT_CAP : Infinity;
+}
+
+/** One-line description of the game rule, for the scoring screen and match reports. */
+export function tieBreakRule(tieBreak: TieBreak): string {
+  return tieBreak === 'cap-15'
+    ? 'Games to 11, win by 2, first to 15 after 10-10'
+    : 'Games to 11, win by 2 (no cap)';
+}
+
 export function gamesToWin(format: string): number {
   return format === 'best-of-3' ? 2 : 3;
 }
 
-export function isGameWon(score1: number, score2: number, pointsPerGame = POINTS_PER_GAME, cap = POINT_CAP): boolean {
+export function isGameWon(score1: number, score2: number, pointsPerGame = POINTS_PER_GAME, cap = Infinity): boolean {
   const top = Math.max(score1, score2);
   return top >= cap || (top >= pointsPerGame && Math.abs(score1 - score2) >= 2);
 }
@@ -61,14 +81,14 @@ export interface RallyOutcome {
 }
 
 /** Apply one rally won by `winner`. Pure: returns the new state, changes nothing. */
-export function playRally(state: RallyState, winner: string): RallyOutcome {
+export function playRally(state: RallyState, winner: string, tieBreak: TieBreak = DEFAULT_TIE_BREAK): RallyOutcome {
   if (winner !== state.player1 && winner !== state.player2) {
     throw new Error(`${winner} is not playing in this match`);
   }
   const score1 = state.score1 + (winner === state.player1 ? 1 : 0);
   const score2 = state.score2 + (winner === state.player2 ? 1 : 0);
   const handout = winner !== state.server;
-  const gameWon = isGameWon(score1, score2);
+  const gameWon = isGameWon(score1, score2, POINTS_PER_GAME, capFor(tieBreak));
   return {
     score1,
     score2,

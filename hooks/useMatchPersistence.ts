@@ -4,11 +4,13 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '../src/contexts/AuthContext';
 import { saveNewMatch, updateMatch, completeMatch, MatchData } from '../src/lib/matchService';
 import { isFirebaseConfigured } from '../src/lib/firebase';
+import type { TieBreak } from '../src/lib/scoring';
 
 interface UseMatchPersistenceParams {
   player1: string;
   player2: string;
   matchFormat: string;
+  tieBreak: TieBreak;
   gameHistory: Array<{
     gameNumber: number;
     points: Array<{
@@ -85,6 +87,7 @@ export function useMatchPersistence(params: UseMatchPersistenceParams) {
       player1: p.player1,
       player2: p.player2,
       matchFormat: p.matchFormat,
+      tieBreak: p.tieBreak,
       matchStartTime: p.matchStartTime,
       gameHistory: [],
       currentGameState: p.currentGameState,

@@ -1,11 +1,27 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { getTieBreak, setTieBreak } from '@/lib/preferences';
+import { DEFAULT_TIE_BREAK, type TieBreak } from '@/lib/scoring';
+
+const TIE_BREAKS: { value: TieBreak; title: string; detail: string }[] = [
+  { value: 'win-by-two', title: 'Win by 2', detail: 'Official rule: at 10-10 play on until someone leads by two.' },
+  { value: 'cap-15', title: 'Cap at 15', detail: 'Shorter matches: at 10-10, first to 15 wins.' },
+];
 
 export default function MatchFormatSelection() {
   const [selectedMatch, setSelectedMatch] = useState<string | null>(null);
+  const [tieBreak, setTieBreakState] = useState<TieBreak>(DEFAULT_TIE_BREAK);
   const router = useRouter();
+
+  // The choice is remembered on this device (read after mount: storage is browser-only).
+  useEffect(() => setTieBreakState(getTieBreak()), []);
+
+  const chooseTieBreak = (value: TieBreak) => {
+    setTieBreakState(value);
+    setTieBreak(value);
+  };
 
   const handleMatchSelection = (matchType: string) => {
     setSelectedMatch(matchType);
@@ -110,6 +126,34 @@ export default function MatchFormatSelection() {
             )}
           </div>
         </div>
+
+        {/* Tie-break rule */}
+        <fieldset className="mb-8">
+          <legend className="text-sm font-semibold text-gray-700 mb-3">At 10-10</legend>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {TIE_BREAKS.map((option) => (
+              <label
+                key={option.value}
+                className={`flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer bg-white transition-colors ${
+                  tieBreak === option.value ? 'border-blue-500' : 'border-gray-200 hover:border-blue-300'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="tie-break"
+                  value={option.value}
+                  checked={tieBreak === option.value}
+                  onChange={() => chooseTieBreak(option.value)}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="block font-semibold text-gray-900">{option.title}</span>
+                  <span className="block text-sm text-gray-600">{option.detail}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
 
         {/* Navigation Buttons */}
         <div className="flex gap-4">

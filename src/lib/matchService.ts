@@ -19,6 +19,8 @@ export interface MatchData {
   player1: string;
   player2: string;
   matchFormat: string;
+  /** 10-10 rule used for this match. Older matches have none: they used the 15 cap. */
+  tieBreak?: 'win-by-two' | 'cap-15';
   matchStartTime: Date;
   gameHistory: Array<{
     gameNumber: number;

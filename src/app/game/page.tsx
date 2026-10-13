@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { escapeHtml, formatDuration, gamesToWin, playRally } from '@/lib/scoring';
+import { DEFAULT_TIE_BREAK, escapeHtml, formatDuration, gamesToWin, playRally, tieBreakRule, type TieBreak } from '@/lib/scoring';
+import { getTieBreak } from '@/lib/preferences';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useMatchPersistence } from '../../../hooks/useMatchPersistence';
 
@@ -92,7 +93,9 @@ function GamePageContent() {
   }>>([]);
   
   const requiredGames = gamesToWin(matchFormat);
-  const gameToPoints = 11; // Standard squash game to 11 points
+  // 10-10 rule chosen on the match format screen (read after mount: storage is browser-only).
+  const [tieBreak, setTieBreak] = useState<TieBreak>(DEFAULT_TIE_BREAK);
+  useEffect(() => setTieBreak(getTieBreak()), []);
 
   // Helper function to get total match duration
   const getTotalMatchDuration = (): number => {
@@ -105,6 +108,7 @@ function GamePageContent() {
     player1,
     player2,
     matchFormat,
+    tieBreak,
     gameHistory,
     currentGameState: {
       gameNumber,
@@ -173,6 +177,7 @@ function GamePageContent() {
     const outcome = playRally(
       { player1, player2, server: currentServer, servingSide: lastServingSide, score1: player1Score, score2: player2Score },
       winner,
+      tieBreak,
     );
     setPlayer1Score(outcome.score1);
     setPlayer2Score(outcome.score2);
@@ -1023,8 +1028,7 @@ function GamePageContent() {
 
         {/* Game Rules Info */}
         <div className="text-center text-sm text-gray-500">
-          <p>First to {gameToPoints} points wins the game</p>
-          <p>Must win by 2 points (or first to 15 if tied at 10-10)</p>
+          <p>{tieBreakRule(tieBreak)}</p>
         </div>
       </div>
 

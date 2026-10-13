@@ -1,6 +1,6 @@
 'use client';
 
-import { escapeHtml, formatDuration } from '@/lib/scoring';
+import { escapeHtml, formatDuration, tieBreakRule, type TieBreak } from '@/lib/scoring';
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -16,6 +16,7 @@ interface MatchData {
   player1: string;
   player2: string;
   matchFormat: string;
+  tieBreak?: TieBreak;
   matchStartTime: Date;
   gameHistory: Array<{
     gameNumber: number;
@@ -210,6 +211,7 @@ export default function MatchDetailsPage() {
           
           <div class="match-info">
             <div><strong>Match Format:</strong> ${match.matchFormat}</div>
+            <div><strong>Scoring:</strong> ${tieBreakRule(match.tieBreak ?? 'cap-15')}</div>
             <div><strong>Date:</strong> ${formatDate(match.matchStartTime)}</div>
             <div><strong>Time:</strong> ${formatTime(match.matchStartTime)}</div>
           </div>
@@ -496,8 +498,8 @@ export default function MatchDetailsPage() {
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-2xl font-semibold text-gray-900">Game Results</h3>
             <div className="text-sm text-gray-500 text-right">
-              <div>🏸 Standard Squash Scoring</div>
-              <div>Games to 11 points (win by 2, max 15)</div>
+              <div>Point-a-rally scoring</div>
+              <div>{tieBreakRule(match.tieBreak ?? 'cap-15')}</div>
             </div>
           </div>
           
@@ -580,7 +582,7 @@ export default function MatchDetailsPage() {
                         )}
                       </div>
                       <div className="text-xs text-gray-500 mt-2">
-                        Games to 11 points (win by 2, max 15) • (H) = Handout • Click card for full details
+                        (H) = Handout • Click card for full details
                       </div>
                     </div>
                   </div>
@@ -596,6 +598,7 @@ export default function MatchDetailsPage() {
             game={selectedGame}
             player1={match.player1}
             player2={match.player2}
+            tieBreak={match.tieBreak ?? 'cap-15'}
             isOpen={showGameModal}
             onClose={closeGameModal}
           />

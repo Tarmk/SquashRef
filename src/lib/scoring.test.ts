@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { escapeHtml, formatDuration, gamesToWin, isGameWon, isMatchWon, playRally, type RallyState } from './scoring';
+import {
+  capFor,
+  escapeHtml,
+  formatDuration,
+  gamesToWin,
+  isGameWon,
+  isMatchWon,
+  isTieBreak,
+  playRally,
+  tieBreakRule,
+  type RallyState,
+} from './scoring';
 
 const start: RallyState = { player1: 'Ana', player2: 'Ben', server: 'Ana', servingSide: 'right', score1: 0, score2: 0 };
 
@@ -12,15 +23,36 @@ describe('isGameWon', () => {
     expect(isGameWon(9, 11)).toBe(true);
   });
 
-  it('is capped at 15 after 10-10 (the rule shown on the scoring screen)', () => {
-    expect(isGameWon(14, 13)).toBe(false);
-    expect(isGameWon(15, 14)).toBe(true);
-    expect(isGameWon(14, 15)).toBe(true);
+  it('plays on until someone leads by two by default (WSF rule)', () => {
+    expect(isGameWon(15, 14)).toBe(false);
+    expect(isGameWon(16, 14)).toBe(true);
   });
 
-  it('can play to two clear with no cap', () => {
-    expect(isGameWon(15, 14, 11, Infinity)).toBe(false);
-    expect(isGameWon(16, 14, 11, Infinity)).toBe(true);
+  it('can cap a game at 15 after 10-10', () => {
+    expect(isGameWon(14, 13, 11, 15)).toBe(false);
+    expect(isGameWon(15, 14, 11, 15)).toBe(true);
+    expect(isGameWon(14, 15, 11, 15)).toBe(true);
+  });
+});
+
+describe('tie-break option', () => {
+  it('maps each option to its cap', () => {
+    expect(capFor('win-by-two')).toBe(Infinity);
+    expect(capFor('cap-15')).toBe(15);
+  });
+
+  it('is applied by playRally', () => {
+    const at14all: RallyState = { ...start, score1: 14, score2: 14 };
+    expect(playRally(at14all, 'Ana').gameWon).toBe(false);
+    expect(playRally(at14all, 'Ana', 'cap-15').gameWon).toBe(true);
+  });
+
+  it('describes the rule and validates stored values', () => {
+    expect(tieBreakRule('cap-15')).toContain('15');
+    expect(tieBreakRule('win-by-two')).toContain('no cap');
+    expect(isTieBreak('cap-15')).toBe(true);
+    expect(isTieBreak('first-to-21')).toBe(false);
+    expect(isTieBreak(null)).toBe(false);
   });
 });
 
