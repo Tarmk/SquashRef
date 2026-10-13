@@ -21,6 +21,17 @@ A match-support app for squash referees: score a match rally by rally, keep the 
   </tr>
 </table>
 
+<table>
+  <tr>
+    <td><img src="docs/tournament-join.png" alt="Join page: tournament details, registered players and the player's registration" width="250"></td>
+    <td><img src="docs/tournament-players.png" alt="Host view: registered players with remove buttons and a field to add a walk-in" width="500"></td>
+  </tr>
+  <tr>
+    <td align="center">Players join from the link</td>
+    <td align="center">The host manages the list</td>
+  </tr>
+</table>
+
 ## What it does
 
 - **Live scoring.** One tap per rally. The app tracks the score, who serves, and which side they serve from: the server switches sides while they keep winning, and after a hand-out the new server picks a side.
