@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '../src/contexts/AuthContext';
 import { saveNewMatch, updateMatch, completeMatch, MatchData } from '../src/lib/matchService';
-import { Timestamp } from 'firebase/firestore';
 import { isFirebaseConfigured } from '../src/lib/firebase';
 
 interface UseMatchPersistenceParams {
@@ -50,95 +49,82 @@ interface UseMatchPersistenceParams {
 export function useMatchPersistence(params: UseMatchPersistenceParams) {
   const { currentUser } = useAuth();
   const matchIdRef = useRef<string | null>(null);
-
-  // Create new match when the hook is first used
+  const completedRef = useRef(false);
+  // The game page passes fresh objects (and a ticking duration) on every render.
+  // Keep the latest values in a ref so the effects below only run when they should,
+  // instead of writing to Firestore on every one-second timer tick.
+  const latest = useRef(params);
   useEffect(() => {
-    if (!currentUser || !isFirebaseConfigured()) return;
+    latest.current = params;
+  });
 
-    const createNewMatch = async () => {
-      try {
-        const newMatchData: Omit<MatchData, 'createdAt' | 'updatedAt'> = {
-          userId: currentUser.uid,
-          player1: params.player1,
-          player2: params.player2,
-          matchFormat: params.matchFormat,
-          matchStartTime: params.matchStartTime,
-          gameHistory: [],
-          currentGameState: params.currentGameState,
-          isComplete: false,
-          totalDuration: 0,
-        };
+  const enabled = !!currentUser && isFirebaseConfigured();
+  const userId = currentUser?.uid;
 
-        const matchId = await saveNewMatch(newMatchData);
-        matchIdRef.current = matchId;
-        console.log('🆕 Created new match:', matchId);
-      } catch (error) {
-        console.error('Error creating match:', error);
-        // Don't throw error to prevent app crash if Firebase isn't configured
-      }
-    };
-
-    // Only create match if we don't already have one
-    if (!matchIdRef.current) {
-      createNewMatch();
+  const saveProgress = useCallback(async () => {
+    const id = matchIdRef.current;
+    if (!id || completedRef.current) return;
+    const p = latest.current;
+    try {
+      await updateMatch(id, {
+        gameHistory: p.gameHistory,
+        currentGameState: p.currentGameState,
+        totalDuration: p.totalDuration,
+      });
+    } catch (error) {
+      console.error('Error updating match:', error);
     }
-  }, [currentUser, params.player1, params.player2, params.matchFormat]); // More specific dependencies
+  }, []);
 
-  // Update match state periodically
+  // Create the match document once per signed-in user.
   useEffect(() => {
-    if (!currentUser || !isFirebaseConfigured() || !matchIdRef.current) return;
-
-    const updateMatchState = async () => {
-      try {
-        const updateData: Partial<MatchData> = {
-          gameHistory: params.gameHistory,
-          currentGameState: params.currentGameState,
-          totalDuration: params.totalDuration,
-        };
-
-        await updateMatch(matchIdRef.current!, updateData);
-        console.log('📝 Match updated:', matchIdRef.current);
-      } catch (error) {
-        console.error('Error updating match:', error);
-        // Don't throw error to prevent app crash
-      }
+    if (!enabled || !userId || matchIdRef.current) return;
+    const p = latest.current;
+    const newMatchData: Omit<MatchData, 'createdAt' | 'updatedAt'> = {
+      userId,
+      player1: p.player1,
+      player2: p.player2,
+      matchFormat: p.matchFormat,
+      matchStartTime: p.matchStartTime,
+      gameHistory: [],
+      currentGameState: p.currentGameState,
+      isComplete: false,
+      totalDuration: 0,
     };
+    saveNewMatch(newMatchData)
+      .then((id) => {
+        matchIdRef.current = id;
+      })
+      .catch((error) => console.error('Error creating match:', error));
+  }, [enabled, userId]);
 
-    // Update every 30 seconds or when game state changes significantly
-    const interval = setInterval(updateMatchState, 30000);
-    
-    // Also update immediately when game history changes (new game completed)
-    if (params.gameHistory.length > 0) {
-      updateMatchState();
-    }
-
+  // Save every 30 seconds while the match is running...
+  useEffect(() => {
+    if (!enabled) return;
+    const interval = setInterval(saveProgress, 30_000);
     return () => clearInterval(interval);
-  }, [currentUser, params.gameHistory, params.currentGameState, params.totalDuration]);
+  }, [enabled, saveProgress]);
 
-  // Complete match when match ends
+  // ...and straight away whenever a game finishes.
+  const gamesPlayed = params.gameHistory.length;
   useEffect(() => {
-    if (!currentUser || !isFirebaseConfigured() || !matchIdRef.current || !params.isComplete) return;
+    if (enabled && gamesPlayed > 0) saveProgress();
+  }, [enabled, gamesPlayed, saveProgress]);
 
-    const completeMatchState = async () => {
-      try {
-        await completeMatch(
-          matchIdRef.current!,
-          params.gameHistory,
-          params.matchWinner!,
-          params.totalDuration
-        );
-        console.log('🏆 Match completed and saved:', matchIdRef.current);
-      } catch (error) {
-        console.error('Error completing match:', error);
-        // Don't throw error to prevent app crash
-      }
-    };
-
-    completeMatchState();
-  }, [currentUser, params.isComplete, params.gameHistory, params.matchWinner, params.totalDuration]);
+  // Mark the match complete exactly once.
+  useEffect(() => {
+    const id = matchIdRef.current;
+    if (!enabled || !params.isComplete || !id || completedRef.current) return;
+    completedRef.current = true;
+    const p = latest.current;
+    completeMatch(id, p.gameHistory, p.matchWinner ?? '', p.totalDuration).catch((error) => {
+      completedRef.current = false;
+      console.error('Error completing match:', error);
+    });
+  }, [enabled, params.isComplete]);
 
   return {
     matchId: matchIdRef.current,
-    isUserLoggedIn: !!currentUser && isFirebaseConfigured(),
+    isUserLoggedIn: enabled,
   };
-} 
+}

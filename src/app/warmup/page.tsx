@@ -71,7 +71,7 @@ function WarmupPageContent() {
             Time to start the match
           </p>
           <Link
-            href={`/serve-side?${searchParams.toString()}`}
+            href={`/break-option?format=${matchFormat}&player1=${encodeURIComponent(player1)}&player2=${encodeURIComponent(player2)}`}
             className="px-8 py-4 bg-green-500 hover:bg-green-600 text-white rounded-xl font-semibold text-lg transition-all duration-300 transform hover:scale-105 shadow-lg"
           >
             Proceed to Game

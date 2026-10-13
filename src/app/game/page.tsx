@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
+import { escapeHtml, formatDuration, gamesToWin, playRally } from '@/lib/scoring';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useMatchPersistence } from '../../../hooks/useMatchPersistence';
 
@@ -90,7 +91,7 @@ function GamePageContent() {
     endTime: Date;
   }>>([]);
   
-  const requiredGames = matchFormat === 'best-of-3' ? 2 : 3;
+  const requiredGames = gamesToWin(matchFormat);
   const gameToPoints = 11; // Standard squash game to 11 points
 
   // Helper function to get total match duration
@@ -156,86 +157,52 @@ function GamePageContent() {
     return () => clearInterval(interval);
   }, [gameStartTime, matchCompleted]);
 
-  // Helper function to format duration
-  const formatDuration = (seconds: number): string => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const remainingSeconds = seconds % 60;
-    
-    if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+  type PointRecord = (typeof currentGamePoints)[number];
+
+  const showToast = (message: string, type: 'score' | 'handout', ms: number) => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), ms);
+  };
+
+  /**
+   * One rally won by `winner` (a normal point, or a stroke decision). Updates the
+   * score, records the point, and either ends the game, hands the serve over
+   * (the new server then picks a side) or switches the server's side.
+   */
+  const awardRally = (winner: string, fault?: Pick<PointRecord, 'isFault' | 'faultType' | 'faultAgainst' | 'faultReason'>) => {
+    const outcome = playRally(
+      { player1, player2, server: currentServer, servingSide: lastServingSide, score1: player1Score, score2: player2Score },
+      winner,
+    );
+    setPlayer1Score(outcome.score1);
+    setPlayer2Score(outcome.score2);
+
+    const point: PointRecord = {
+      scorer: winner,
+      score: `${outcome.score1}-${outcome.score2}`,
+      isHandout: outcome.handout,
+      servingSide: lastServingSide,
+      server: currentServer,
+      ...fault,
+    };
+    const updatedPoints = [...currentGamePoints, point];
+    setCurrentGamePoints(updatedPoints);
+
+    if (outcome.gameWon) {
+      // No side to choose: the winner of this game serves first in the next one.
+      processGameWin(outcome.score1, outcome.score2, updatedPoints);
+    } else if (outcome.handout) {
+      setPendingServer(winner);
+      setAwaitingSideSelection(true);
+    } else {
+      setLastServingSide(outcome.servingSide ?? lastServingSide);
     }
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    return outcome;
   };
 
   const handlePlayerScore = (scoringPlayer: string) => {
-    const isHandout = scoringPlayer !== currentServer;
-    
-    // Show toast notification
-    setToast({
-      message: isHandout ? `${scoringPlayer} scores! Handout!` : `${scoringPlayer} scores!`,
-      type: isHandout ? 'handout' : 'score'
-    });
-    
-    // Clear toast after 2 seconds
-    setTimeout(() => setToast(null), 2000);
-    
-    // Update scores
-    const newPlayer1Score = scoringPlayer === player1 ? player1Score + 1 : player1Score;
-    const newPlayer2Score = scoringPlayer === player2 ? player2Score + 1 : player2Score;
-    
-    if (scoringPlayer === player1) {
-      setPlayer1Score(newPlayer1Score);
-    } else {
-      setPlayer2Score(newPlayer2Score);
-    }
-    
-    // Track this point in game history
-    const pointRecord = {
-      scorer: scoringPlayer,
-      score: `${newPlayer1Score}-${newPlayer2Score}`,
-      isHandout: isHandout,
-      servingSide: lastServingSide,
-      server: currentServer
-    };
-    const updatedPoints = [...currentGamePoints, pointRecord];
-    setCurrentGamePoints(updatedPoints);
-    
-    // Handle serving logic
-    if (isHandout) {
-      // Handout: wait for referee to select serving side
-      setPendingServer(scoringPlayer);
-      setAwaitingSideSelection(true);
-    } else {
-      // Same server continues: alternate serving side
-      setLastServingSide(lastServingSide === 'left' ? 'right' : 'left');
-    }
-    
-    // Check for game win (but don't process if waiting for side selection)
-    const gameWon = (newPlayer1Score >= 11 && newPlayer1Score - newPlayer2Score >= 2) || 
-                   (newPlayer2Score >= 11 && newPlayer2Score - newPlayer1Score >= 2) ||
-                   newPlayer1Score >= 15 || newPlayer2Score >= 15;
-    
-    // Debug logging for game win detection
-    console.log('Game Win Check:', {
-      newPlayer1Score,
-      newPlayer2Score,
-      scoreDiff: Math.abs(newPlayer1Score - newPlayer2Score),
-      gameWon,
-      isHandout,
-      awaitingSideSelection,
-      conditions: {
-        player1WinBy2: newPlayer1Score >= 11 && newPlayer1Score - newPlayer2Score >= 2,
-        player2WinBy2: newPlayer2Score >= 11 && newPlayer2Score - newPlayer1Score >= 2,
-        player1Max15: newPlayer1Score >= 15,
-        player2Max15: newPlayer2Score >= 15
-      }
-    });
-    
-    if (gameWon && !isHandout) {
-      // Only process game win immediately if it's not a handout
-      processGameWin(newPlayer1Score, newPlayer2Score, updatedPoints);
-    }
+    const { handout } = awardRally(scoringPlayer);
+    showToast(handout ? `${scoringPlayer} scores! Handout!` : `${scoringPlayer} scores!`, handout ? 'handout' : 'score', 2000);
   };
 
   const handleSideSelection = (selectedSide: 'left' | 'right') => {
@@ -244,16 +211,6 @@ function GamePageContent() {
       setLastServingSide(selectedSide);
       setAwaitingSideSelection(false);
       setPendingServer('');
-      
-      // Check if this was a game-winning point that we need to process
-      // Use the current scores which reflect the point that was just scored
-      const gameWon = (player1Score >= 11 && player1Score - player2Score >= 2) || 
-                     (player2Score >= 11 && player2Score - player1Score >= 2) ||
-                     player1Score >= 15 || player2Score >= 15;
-      
-      if (gameWon) {
-        processGameWin(player1Score, player2Score, currentGamePoints);
-      }
     }
   };
 
@@ -293,23 +250,7 @@ function GamePageContent() {
     
     // Check if match is won using the calculated values
     const matchWon = newPlayer1Games >= requiredGames || newPlayer2Games >= requiredGames;
-    
-    // Debug logging to track the issue
-    console.log('Game Win Debug:', {
-      winner,
-      gameNumber,
-      finalScore: `${newPlayer1Score}-${newPlayer2Score}`,
-      pointsRecorded: finalGamePoints.length,
-      lastPointScore: finalGamePoints[finalGamePoints.length - 1]?.score,
-      oldPlayer1Games: player1Games,
-      oldPlayer2Games: player2Games,
-      newPlayer1Games,
-      newPlayer2Games,
-      requiredGames,
-      matchWon,
-      matchFormat
-    });
-    
+
     if (matchWon) {
       // Show match completion screen
       setMatchCompleted(true);
@@ -404,44 +345,16 @@ function GamePageContent() {
     };
 
     // Handle scoring and game logic based on fault type
-    if (faultType === 'stroke') {
-      // STROKE: Award point to the interfered player
-      const scoringPlayer = faultAgainst!; // Should always be set for stroke
-      
-      // Update scores
-      const newPlayer1Score = scoringPlayer === player1 ? player1Score + 1 : player1Score;
-      const newPlayer2Score = scoringPlayer === player2 ? player2Score + 1 : player2Score;
-      
-      if (scoringPlayer === player1) {
-        setPlayer1Score(newPlayer1Score);
-      } else {
-        setPlayer2Score(newPlayer2Score);
-      }
-
-      // Update the fault record with new score and correct scorer
-      const updatedFaultRecord = {
-        ...faultRecord,
-        score: `${newPlayer1Score}-${newPlayer2Score}`,
-        scorer: scoringPlayer,
-        faultReason: `STROKE - point to ${scoringPlayer}`
-      };
-      setCurrentGamePoints(prev => [...prev, updatedFaultRecord]);
-
-      // Check for game win
-      const gameWon = (newPlayer1Score >= 11 && newPlayer1Score - newPlayer2Score >= 2) || 
-                     (newPlayer2Score >= 11 && newPlayer2Score - newPlayer1Score >= 2) ||
-                     newPlayer1Score >= 15 || newPlayer2Score >= 15;
-      
-      if (gameWon) {
-        processGameWin(newPlayer1Score, newPlayer2Score, [...currentGamePoints, updatedFaultRecord]);
-      }
-
-      // Show toast notification
-      setToast({
-        message: `Stroke to ${scoringPlayer}!`,
-        type: 'score'
+    if (faultType === 'stroke' && faultAgainst) {
+      // STROKE: the player who was obstructed wins the rally. It counts like any
+      // other rally, so it can be a hand-out or end the game.
+      awardRally(faultAgainst, {
+        isFault: true,
+        faultType: 'stroke',
+        faultAgainst,
+        faultReason: `STROKE - point to ${faultAgainst}`,
       });
-      
+      setToast({ message: `Stroke to ${faultAgainst}!`, type: 'score' });
     } else if (faultType === 'let') {
       // LET: Just log the decision, replay the point (no score change)
       setCurrentGamePoints(prev => [...prev, { ...faultRecord, faultReason: 'LET - point replayed' }]);
@@ -558,8 +471,8 @@ function GamePageContent() {
           
           <div class="game-summary">
             <h3>Game Summary</h3>
-            <p><strong>Players:</strong> ${player1} vs ${player2}</p>
-            <p><strong>Winner:</strong> ${game.winner}</p>
+            <p><strong>Players:</strong> ${escapeHtml(player1)} vs ${escapeHtml(player2)}</p>
+            <p><strong>Winner:</strong> ${escapeHtml(game.winner)}</p>
             <p><strong>Final Score:</strong> ${game.finalScore}</p>
             <p><strong>Game Duration:</strong> ${formatDuration(game.duration)}</p>
             <p><strong>Start Time:</strong> ${game.startTime.toLocaleTimeString()}</p>
@@ -583,9 +496,9 @@ function GamePageContent() {
               ${game.points.map((point, index) => `
                 <tr class="${point.isHandout ? 'handout' : ''}">
                   <td>${index + 1}</td>
-                  <td><strong>${point.scorer}</strong></td>
+                  <td><strong>${escapeHtml(point.scorer)}</strong></td>
                   <td>${point.score}</td>
-                  <td>${point.server}</td>
+                  <td>${escapeHtml(point.server)}</td>
                   <td>${point.servingSide}</td>
                   <td>${point.isHandout ? '✓' : ''}</td>
                 </tr>
@@ -680,7 +593,7 @@ function GamePageContent() {
         <body>
           <div class="header">
             <h1>Complete Squash Match Transcript</h1>
-            <h2>${player1} vs ${player2}</h2>
+            <h2>${escapeHtml(player1)} vs ${escapeHtml(player2)}</h2>
           </div>
           
           <div class="match-info">
@@ -691,8 +604,8 @@ function GamePageContent() {
           
           <div class="match-summary">
             <h3>Match Result</h3>
-            <p><strong>Winner:</strong> ${matchWinner}</p>
-            <p><strong>Final Score:</strong> ${player1} ${player1Games} - ${player2Games} ${player2}</p>
+            <p><strong>Winner:</strong> ${escapeHtml(matchWinner ?? '')}</p>
+            <p><strong>Final Score:</strong> ${escapeHtml(player1)} ${player1Games} - ${player2Games} ${escapeHtml(player2)}</p>
             <p><strong>Match Duration:</strong> ${formatDuration(getTotalMatchDuration())}</p>
             <p><strong>Match Start:</strong> ${matchStartTime.toLocaleTimeString()}</p>
             <p><strong>Games Played:</strong> ${gameHistory.length}</p>
@@ -710,7 +623,7 @@ function GamePageContent() {
           ${gameHistory.map(game => `
             <div class="game-section">
               <div class="game-header">
-                <h3>Game ${game.gameNumber} - Winner: ${game.winner} (${game.finalScore}) - Duration: ${formatDuration(game.duration)}</h3>
+                <h3>Game ${game.gameNumber} - Winner: ${escapeHtml(game.winner)} (${game.finalScore}) - Duration: ${formatDuration(game.duration)}</h3>
               </div>
               
               <table class="points-table">
@@ -728,9 +641,9 @@ function GamePageContent() {
                   ${game.points.map((point, index) => `
                     <tr class="${point.isHandout ? 'handout' : ''}">
                       <td>${index + 1}</td>
-                      <td><strong>${point.scorer}</strong></td>
+                      <td><strong>${escapeHtml(point.scorer)}</strong></td>
                       <td>${point.score}</td>
-                      <td>${point.server}</td>
+                      <td>${escapeHtml(point.server)}</td>
                       <td>${point.servingSide}</td>
                       <td>${point.isHandout ? '✓' : ''}</td>
                     </tr>

@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 
-export default function JoinTournamentPage() {
+function JoinTournamentContent() {
   const router = useRouter();
   const params = useParams();
-  const searchParams = new URLSearchParams(window.location.search);
+  const searchParams = useSearchParams();
   const tournamentId = params.id as string;
   
   const [playerName, setPlayerName] = useState('');
@@ -111,11 +111,11 @@ export default function JoinTournamentPage() {
           </p>
           <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
             <p className="text-green-700 text-sm">
-              You've been successfully registered for Tournament <strong>{tournamentId}</strong>
+              You&apos;ve been successfully registered for Tournament <strong>{tournamentId}</strong>
             </p>
           </div>
           <div className="text-sm text-gray-500">
-            <p>You'll receive updates about match schedules and tournament progress.</p>
+            <p>You&apos;ll receive updates about match schedules and tournament progress.</p>
             <p className="mt-2">Keep this page bookmarked for tournament updates!</p>
           </div>
         </div>
@@ -303,9 +303,9 @@ export default function JoinTournamentPage() {
               <div className="bg-gray-50 rounded-lg p-4">
                 <h4 className="font-medium text-gray-900 mb-2">What happens next?</h4>
                 <ul className="text-sm text-gray-600 space-y-1">
-                  <li>• You'll be added to the tournament roster</li>
+                  <li>• You&apos;ll be added to the tournament roster</li>
                   <li>• Match schedules will be generated automatically</li>
-                  <li>• You'll receive updates about your matches</li>
+                  <li>• You&apos;ll receive updates about your matches</li>
                   <li>• Tournament bracket will be available to view</li>
                 </ul>
               </div>
@@ -350,7 +350,7 @@ export default function JoinTournamentPage() {
               </p>
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                 <p className="text-yellow-700 text-sm">
-                  Contact the tournament organizer if you'd like to be added to a waiting list.
+                  Contact the tournament organizer if you&apos;d like to be added to a waiting list.
                 </p>
               </div>
             </div>
@@ -380,4 +380,12 @@ export default function JoinTournamentPage() {
       </div>
     </div>
   );
-} 
+}
+
+export default function JoinTournamentPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-600">Loading...</div>}>
+      <JoinTournamentContent />
+    </Suspense>
+  );
+}
