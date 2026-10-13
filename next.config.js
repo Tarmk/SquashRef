@@ -1,16 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  turbopack: {
-    rules: {
-      '*.svg': {
-        loaders: ['@svgr/webpack'],
-        as: '*.js',
-      },
-    },
-  },
-}
+  // Lint and type errors fail the build (CI runs `npm run lint` and `npm run typecheck` too).
+};
 
-module.exports = nextConfig 
+module.exports = nextConfig;

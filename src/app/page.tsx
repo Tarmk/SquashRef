@@ -97,7 +97,7 @@ export default function ModeSelection() {
                 🔧 Firebase not configured - Running in guest mode only
               </p>
               <p className="text-blue-600 text-sm">
-                To enable match saving, follow the setup guide in FIREBASE_SETUP.md
+                To enable match saving, add your Firebase config to .env.local (see the README)
               </p>
             </div>
           </div>

@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { escapeHtml, formatDuration } from '@/lib/scoring';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, type DocumentData } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import GameDetailModal from '@/components/GameDetailModal';
 import Header from '@/components/Header';
@@ -53,16 +54,7 @@ export default function MatchDetailsPage() {
   const params = useParams();
   const matchId = params.id as string;
 
-  useEffect(() => {
-    if (!currentUser) {
-      router.push('/auth/login');
-      return;
-    }
-
-    fetchMatch();
-  }, [currentUser, matchId, router]);
-
-  async function fetchMatch() {
+  const fetchMatch = useCallback(async () => {
     if (!currentUser || !matchId) return;
 
     const dbInstance = db();
@@ -86,7 +78,7 @@ export default function MatchDetailsPage() {
           id: matchSnap.id,
           ...(data as Omit<MatchData, 'id' | 'matchStartTime' | 'gameHistory' | 'createdAt' | 'updatedAt'>),
           matchStartTime: data.matchStartTime?.toDate() || new Date(),
-          gameHistory: data.gameHistory?.map((game: any) => ({
+          gameHistory: data.gameHistory?.map((game: DocumentData) => ({
             ...game,
             startTime: game.startTime?.toDate() || new Date(),
             endTime: game.endTime?.toDate() || new Date(),
@@ -105,18 +97,15 @@ export default function MatchDetailsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [currentUser, matchId]);
 
-  const formatDuration = (seconds: number): string => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const remainingSeconds = seconds % 60;
-    
-    if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+  useEffect(() => {
+    if (!currentUser) {
+      router.push('/auth/login');
+      return;
     }
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
+    fetchMatch();
+  }, [currentUser, router, fetchMatch]);
 
   const formatTime = (date: Date): string => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -141,7 +130,7 @@ export default function MatchDetailsPage() {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Match Transcript - ${match.player1} vs ${match.player2}</title>
+          <title>Match Transcript - ${escapeHtml(match.player1)} vs ${escapeHtml(match.player2)}</title>
           <style>
             body { 
               font-family: Arial, sans-serif; 
@@ -216,7 +205,7 @@ export default function MatchDetailsPage() {
         <body>
           <div class="header">
             <h1>Complete Squash Match Transcript</h1>
-            <h2>${match.player1} vs ${match.player2}</h2>
+            <h2>${escapeHtml(match.player1)} vs ${escapeHtml(match.player2)}</h2>
           </div>
           
           <div class="match-info">
@@ -227,7 +216,7 @@ export default function MatchDetailsPage() {
           
           <div class="match-summary">
             <h3>Match Result</h3>
-            ${match.isComplete ? `<p><strong>Winner:</strong> ${match.matchWinner}</p>` : '<p><strong>Status:</strong> In Progress</p>'}
+            ${match.isComplete ? `<p><strong>Winner:</strong> ${escapeHtml(match.matchWinner ?? '')}</p>` : '<p><strong>Status:</strong> In Progress</p>'}
             <p><strong>Total Duration:</strong> ${formatDuration(match.totalDuration)}</p>
             <p><strong>Games Played:</strong> ${match.gameHistory.length}</p>
             <p><strong>Total Points:</strong> ${match.gameHistory.reduce((total, game) => total + game.points.length, 0)}</p>
@@ -236,7 +225,7 @@ export default function MatchDetailsPage() {
           ${match.gameHistory.map(game => `
             <div class="game-section">
               <div class="game-header">
-                <h3>Game ${game.gameNumber} - Winner: ${game.winner} (${game.finalScore}) - Duration: ${formatDuration(game.duration)}</h3>
+                <h3>Game ${game.gameNumber} - Winner: ${escapeHtml(game.winner)} (${game.finalScore}) - Duration: ${formatDuration(game.duration)}</h3>
               </div>
               
               <table class="points-table">
@@ -255,9 +244,9 @@ export default function MatchDetailsPage() {
                   ${game.points.map((point, index) => `
                     <tr class="${point.isHandout ? 'handout' : ''} ${point.isFault ? 'fault' : ''}">
                       <td>${index + 1}</td>
-                      <td><strong>${point.scorer}</strong></td>
+                      <td><strong>${escapeHtml(point.scorer)}</strong></td>
                       <td>${point.score}</td>
-                      <td>${point.server}</td>
+                      <td>${escapeHtml(point.server)}</td>
                       <td>${point.servingSide}</td>
                       <td>${point.isHandout ? '✓' : ''}</td>
                       <td>${point.isFault ? `<strong style="color: ${point.faultType === 'stroke' ? '#28a745' : point.faultType === 'let' ? '#007bff' : '#dc3545'}">${point.faultReason || point.faultType?.toUpperCase()}</strong>` : ''}</td>

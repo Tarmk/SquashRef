@@ -1,9 +1,8 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
+import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
 import { getAuth as getFirebaseAuth, Auth } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
 
 const firebaseConfig = {
-  // Add your Firebase config here
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
@@ -30,7 +29,7 @@ export const isFirebaseConfigured = () => {
 };
 
 // Initialize Firebase app lazily
-let app: any = null;
+let app: FirebaseApp | null = null;
 export const getFirebaseApp = () => {
   if (!isBrowser) {
     return null;
@@ -90,4 +89,5 @@ export const getDbInstance = (): Firestore | null => {
 export const auth = getAuthInstance;
 export const db = getDbInstance;
 
-export default { getFirebaseApp, isFirebaseConfigured }; 
+const firebase = { getFirebaseApp, isFirebaseConfigured };
+export default firebase;

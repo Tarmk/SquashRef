@@ -6,7 +6,6 @@ import {
   updateDoc, 
   deleteDoc, 
   serverTimestamp,
-  Timestamp 
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -33,20 +32,37 @@ export interface TournamentDraft {
   updatedAt: Date;
   draftData: {
     step: 'type' | 'format' | 'info' | 'players';
-    formData: any;
+    formData: Record<string, unknown>;
   };
 }
 
+const TEXT_FIELDS = ['name', 'description', 'venue', 'address', 'contactInfo', 'entryFee', 'prizes', 'rules'] as const;
+
+/** The tournament details from an edit form that actually have a value (blank text is dropped). */
+type EditableField = (typeof TEXT_FIELDS)[number] | 'maxPlayers' | 'startDate' | 'endDate';
+
+export function filledTournamentFields(form: Partial<Pick<TournamentDraft, EditableField>>): Partial<TournamentDraft> {
+  const fields: Partial<TournamentDraft> = {};
+  for (const key of TEXT_FIELDS) {
+    const value = form[key];
+    if (typeof value === 'string' && value.trim()) fields[key] = value;
+  }
+  if (form.maxPlayers) fields.maxPlayers = form.maxPlayers;
+  if (form.startDate) fields.startDate = form.startDate;
+  if (form.endDate) fields.endDate = form.endDate;
+  return fields;
+}
+
 // Helper function to clean undefined values from object
-const cleanFirebaseData = (obj: any): any => {
-  const cleaned: any = {};
+const cleanFirebaseData = (obj: Record<string, unknown>): Record<string, unknown> => {
+  const cleaned: Record<string, unknown> = {};
   
   for (const [key, value] of Object.entries(obj)) {
     if (value !== undefined) {
       if (value instanceof Date) {
         cleaned[key] = value;
       } else if (value && typeof value === 'object' && !Array.isArray(value)) {
-        cleaned[key] = cleanFirebaseData(value);
+        cleaned[key] = cleanFirebaseData(value as Record<string, unknown>);
       } else {
         cleaned[key] = value;
       }

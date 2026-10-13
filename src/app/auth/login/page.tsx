@@ -4,13 +4,14 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
+import { authErrorMessage } from '@/lib/errors';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login, currentUser } = useAuth();
+  const { login } = useAuth();
   const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent) {
@@ -21,9 +22,9 @@ export default function LoginPage() {
       setLoading(true);
       await login(email, password);
       router.push('/dashboard');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Login error:', error);
-      setError(error.message || 'Failed to log in. Please check your credentials.');
+      setError(authErrorMessage(error, 'Failed to log in. Please check your email and password.'));
     } finally {
       setLoading(false);
     }
@@ -103,7 +104,7 @@ export default function LoginPage() {
           {/* Sign Up Link */}
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
-              Don't have an account?{' '}
+              Don&apos;t have an account?{' '}
               <Link href="/auth/signup" className="text-blue-500 hover:text-blue-600 font-medium">
                 Sign up here
               </Link>
@@ -116,7 +117,7 @@ export default function LoginPage() {
               href="/" 
               className="text-sm text-gray-500 hover:text-gray-700 underline"
             >
-              Continue as guest (matches won't be saved)
+              Continue as guest (matches won&apos;t be saved)
             </Link>
           </div>
         </div>

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
+import { authErrorMessage } from '@/lib/errors';
 
 export default function SignupPage() {
   const [email, setEmail] = useState('');
@@ -31,10 +32,11 @@ export default function SignupPage() {
       setLoading(true);
       await signup(email, password, displayName);
       router.push('/dashboard');
-    } catch (error: any) {
-      setError('Failed to create account: ' + error.message);
+    } catch (error) {
+      setError(authErrorMessage(error, 'Failed to create the account. Please try again.'));
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   return (
@@ -156,7 +158,7 @@ export default function SignupPage() {
               href="/" 
               className="text-sm text-gray-500 hover:text-gray-700 underline"
             >
-              Continue as guest (matches won't be saved)
+              Continue as guest (matches won&apos;t be saved)
             </Link>
           </div>
         </div>

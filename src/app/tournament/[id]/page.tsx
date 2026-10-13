@@ -1,9 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { loadTournamentDraft, saveTournamentDraft, finalizeTournamentDraft, deleteTournamentDraft } from '@/lib/tournamentService';
+import {
+  loadTournamentDraft,
+  saveTournamentDraft,
+  finalizeTournamentDraft,
+  deleteTournamentDraft,
+  filledTournamentFields,
+} from '@/lib/tournamentService';
 import Header from '@/components/Header';
 
 interface Tournament {
@@ -29,7 +35,7 @@ interface Tournament {
   updatedAt: Date;
   draftData?: {
     step: string;
-    formData: any;
+    formData: Record<string, unknown>;
   };
 }
 
@@ -49,15 +55,7 @@ export default function TournamentManagePage() {
   const [editForm, setEditForm] = useState<Partial<Tournament>>({});
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (!currentUser) {
-      router.push('/auth/login');
-      return;
-    }
-    fetchTournament();
-  }, [currentUser, tournamentId]);
-
-  const fetchTournament = async () => {
+  const fetchTournament = useCallback(async () => {
     try {
       setLoading(true);
       const tournamentData = await loadTournamentDraft(tournamentId);
@@ -86,7 +84,15 @@ export default function TournamentManagePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentUser, tournamentId]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      router.push('/auth/login');
+      return;
+    }
+    fetchTournament();
+  }, [currentUser, router, fetchTournament]);
 
   const handleEditSubmit = async () => {
     if (!tournament || !currentUser) return;
@@ -94,21 +100,7 @@ export default function TournamentManagePage() {
     try {
       setSaving(true);
       
-      const updateData: any = {
-        name: editForm.name || tournament.name,
-      };
-
-      // Only add fields that have values
-      if (editForm.description?.trim()) updateData.description = editForm.description;
-      if (editForm.venue?.trim()) updateData.venue = editForm.venue;
-      if (editForm.address?.trim()) updateData.address = editForm.address;
-      if (editForm.contactInfo?.trim()) updateData.contactInfo = editForm.contactInfo;
-      if (editForm.entryFee?.trim()) updateData.entryFee = editForm.entryFee;
-      if (editForm.prizes?.trim()) updateData.prizes = editForm.prizes;
-      if (editForm.rules?.trim()) updateData.rules = editForm.rules;
-      if (editForm.maxPlayers) updateData.maxPlayers = editForm.maxPlayers;
-      if (editForm.startDate) updateData.startDate = editForm.startDate;
-      if (editForm.endDate) updateData.endDate = editForm.endDate;
+      const updateData = { ...filledTournamentFields(editForm), name: editForm.name?.trim() || tournament.name };
 
       await saveTournamentDraft(
         currentUser.uid,
@@ -138,20 +130,7 @@ export default function TournamentManagePage() {
     try {
       setSaving(true);
       
-      // Create the final data with only the fields needed for finalization
-      const finalData: any = {};
-      if (editForm.name?.trim()) finalData.name = editForm.name;
-      if (editForm.description?.trim()) finalData.description = editForm.description;
-      if (editForm.venue?.trim()) finalData.venue = editForm.venue;
-      if (editForm.address?.trim()) finalData.address = editForm.address;
-      if (editForm.contactInfo?.trim()) finalData.contactInfo = editForm.contactInfo;
-      if (editForm.entryFee?.trim()) finalData.entryFee = editForm.entryFee;
-      if (editForm.prizes?.trim()) finalData.prizes = editForm.prizes;
-      if (editForm.rules?.trim()) finalData.rules = editForm.rules;
-      if (editForm.maxPlayers) finalData.maxPlayers = editForm.maxPlayers;
-      if (editForm.startDate) finalData.startDate = editForm.startDate;
-      if (editForm.endDate) finalData.endDate = editForm.endDate;
-      
+      const finalData = filledTournamentFields(editForm);
       await finalizeTournamentDraft(tournamentId, finalData);
       await fetchTournament();
     } catch (error) {
@@ -711,7 +690,7 @@ export default function TournamentManagePage() {
             <div className="text-center py-8">
               <div className="text-gray-500 mb-4">👥 Player Management</div>
               <p className="text-gray-400 mb-4">
-                Player management features coming soon. You'll be able to:
+                Player management features coming soon. You&apos;ll be able to:
               </p>
               <ul className="text-gray-400 text-left max-w-md mx-auto space-y-2">
                 <li>• View all registered players</li>

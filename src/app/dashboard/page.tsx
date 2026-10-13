@@ -1,14 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, type DocumentData, type Firestore } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '@/lib/firebase';
-import { cleanupOrphanedMatches } from '@/lib/matchService';
+import { cleanupOrphanedMatches, type MatchData } from '@/lib/matchService';
+import { errorCode, errorMessage } from '@/lib/errors';
 import { deleteTournamentDraft } from '@/lib/tournamentService';
 import Header from '@/components/Header';
+import { formatDuration } from '@/lib/scoring';
 
 interface SavedMatch {
   id: string;
@@ -20,7 +22,7 @@ interface SavedMatch {
   createdAt: Date;
   updatedAt: Date;
   totalDuration: number;
-  gameHistory: any[];
+  gameHistory: MatchData['gameHistory'];
 }
 
 interface Tournament {
@@ -43,11 +45,71 @@ interface Tournament {
   // Draft-specific fields
   draftData?: {
     step: 'type' | 'format' | 'info' | 'players';
-    formData: any;
+    formData: Record<string, unknown>;
   };
 }
 
 type ActiveTab = 'matches' | 'hosted-tournaments' | 'active-tournaments';
+
+function toTournament(id: string, data: DocumentData): Tournament {
+  return {
+    id,
+    name: data.name,
+    type: data.type,
+    format: data.format,
+    status: data.status,
+    hostId: data.hostId,
+    hostName: data.hostName,
+    startDate: data.startDate?.toDate(),
+    endDate: data.endDate?.toDate(),
+    venue: data.venue,
+    playerCount: data.playerCount || 0,
+    maxPlayers: data.maxPlayers,
+    entryFee: data.entryFee,
+    description: data.description,
+    createdAt: data.createdAt?.toDate() || new Date(),
+    updatedAt: data.updatedAt?.toDate() || new Date(),
+  };
+}
+
+async function fetchSavedMatches(dbInstance: Firestore, userId: string): Promise<SavedMatch[]> {
+  const snapshot = await getDocs(query(collection(dbInstance, 'matches'), where('userId', '==', userId)));
+  const matches: SavedMatch[] = snapshot.docs.map((doc) => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      player1: data.player1,
+      player2: data.player2,
+      matchFormat: data.matchFormat,
+      matchWinner: data.matchWinner,
+      isComplete: data.isComplete,
+      createdAt: data.createdAt?.toDate() || new Date(),
+      updatedAt: data.updatedAt?.toDate() || new Date(),
+      totalDuration: data.totalDuration || 0,
+      gameHistory: data.gameHistory || [],
+    };
+  });
+  // Most recent first
+  return matches.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+}
+
+async function fetchTournaments(dbInstance: Firestore, userId: string) {
+  const tournamentsRef = collection(dbInstance, 'tournaments');
+  const hostedSnapshot = await getDocs(query(tournamentsRef, where('hostId', '==', userId)));
+  const hosted = hostedSnapshot.docs.map((doc) => toTournament(doc.id, doc.data()));
+
+  // Public tournaments that are open or running, except the user's own (already in "hosted")
+  const activeSnapshot = await getDocs(
+    query(tournamentsRef, where('type', '==', 'public'), where('status', 'in', ['registration', 'active'])),
+  );
+  const active = activeSnapshot.docs
+    .filter((doc) => doc.data().hostId !== userId)
+    .map((doc) => toTournament(doc.id, doc.data()));
+
+  hosted.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  active.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  return { hosted, active };
+}
 
 export default function DashboardPage() {
   const { currentUser } = useAuth();
@@ -59,164 +121,46 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('matches');
   const router = useRouter();
 
-  useEffect(() => {
-    if (!currentUser) {
-      router.push('/auth/login');
-      return;
-    }
-
-    fetchData();
-  }, [currentUser, router]);
-
-  async function fetchData() {
+  const fetchData = useCallback(async () => {
     if (!currentUser) return;
 
-    // Check if Firebase is configured
-    if (!isFirebaseConfigured()) {
+    const dbInstance = isFirebaseConfigured() ? db() : null;
+    if (!dbInstance) {
       console.warn('Firebase is not configured, no saved data available');
       setLoading(false);
       return;
     }
 
-    const dbInstance = db();
-    if (!dbInstance) {
-      console.warn('Firebase database not available');
-      setLoading(false);
-      return;
-    }
-
     try {
-      // Clean up orphaned matches first
       await cleanupOrphanedMatches(currentUser.uid);
-
-      // Fetch matches
-      await fetchSavedMatches(dbInstance);
-      
-      // Fetch tournaments
-      await fetchTournaments(dbInstance);
-      
-    } catch (error: any) {
+      setSavedMatches(await fetchSavedMatches(dbInstance, currentUser.uid));
+      const { hosted, active } = await fetchTournaments(dbInstance, currentUser.uid);
+      setHostedTournaments(hosted);
+      setActiveTournaments(active);
+    } catch (error) {
       console.error('Error fetching data:', error);
-      
-      // Provide more specific error messages
-      if (error?.code === 'permission-denied') {
+      const code = errorCode(error);
+      if (code === 'permission-denied') {
         setError('Permission denied. Please check your Firestore security rules or contact support.');
-      } else if (error?.code === 'unauthenticated') {
+      } else if (code === 'unauthenticated') {
         setError('Authentication required. Please sign in again.');
-      } else if (error?.message?.includes('network')) {
+      } else if (errorMessage(error, '').includes('network')) {
         setError('Network error. Please check your internet connection.');
       } else {
-        setError(`Failed to load data: ${error?.message || 'Unknown error'}`);
+        setError(`Failed to load data: ${errorMessage(error, 'Unknown error')}`);
       }
     } finally {
       setLoading(false);
     }
-  }
+  }, [currentUser]);
 
-  async function fetchSavedMatches(dbInstance: any) {
-    const matchesRef = collection(dbInstance, 'matches');
-    const q = query(matchesRef, where('userId', '==', currentUser!.uid));
-    const querySnapshot = await getDocs(q);
-    
-    const matches: SavedMatch[] = [];
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
-      matches.push({
-        id: doc.id,
-        player1: data.player1,
-        player2: data.player2,
-        matchFormat: data.matchFormat,
-        matchWinner: data.matchWinner,
-        isComplete: data.isComplete,
-        createdAt: data.createdAt?.toDate() || new Date(),
-        updatedAt: data.updatedAt?.toDate() || new Date(),
-        totalDuration: data.totalDuration || 0,
-        gameHistory: data.gameHistory || [],
-      });
-    });
-
-    // Sort by most recent first
-    matches.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
-    setSavedMatches(matches);
-  }
-
-  async function fetchTournaments(dbInstance: any) {
-    const tournamentsRef = collection(dbInstance, 'tournaments');
-    
-    // Fetch hosted tournaments
-    const hostedQuery = query(tournamentsRef, where('hostId', '==', currentUser!.uid));
-    const hostedSnapshot = await getDocs(hostedQuery);
-    
-    const hosted: Tournament[] = [];
-    hostedSnapshot.forEach((doc) => {
-      const data = doc.data();
-      hosted.push({
-        id: doc.id,
-        name: data.name,
-        type: data.type,
-        format: data.format,
-        status: data.status,
-        hostId: data.hostId,
-        hostName: data.hostName,
-        startDate: data.startDate?.toDate(),
-        endDate: data.endDate?.toDate(),
-        venue: data.venue,
-        playerCount: data.playerCount || 0,
-        maxPlayers: data.maxPlayers,
-        entryFee: data.entryFee,
-        description: data.description,
-        createdAt: data.createdAt?.toDate() || new Date(),
-        updatedAt: data.updatedAt?.toDate() || new Date(),
-      });
-    });
-
-    // Fetch all active tournaments (public ones that are not completed)
-    const activeQuery = query(
-      tournamentsRef, 
-      where('type', '==', 'public'),
-      where('status', 'in', ['registration', 'active'])
-    );
-    const activeSnapshot = await getDocs(activeQuery);
-    
-    const active: Tournament[] = [];
-    activeSnapshot.forEach((doc) => {
-      const data = doc.data();
-      // Don't include tournaments hosted by current user (they're already in hosted)
-      if (data.hostId !== currentUser!.uid) {
-        active.push({
-          id: doc.id,
-          name: data.name,
-          type: data.type,
-          format: data.format,
-          status: data.status,
-          hostId: data.hostId,
-          hostName: data.hostName,
-          startDate: data.startDate?.toDate(),
-          endDate: data.endDate?.toDate(),
-          venue: data.venue,
-          playerCount: data.playerCount || 0,
-          maxPlayers: data.maxPlayers,
-          entryFee: data.entryFee,
-          description: data.description,
-          createdAt: data.createdAt?.toDate() || new Date(),
-          updatedAt: data.updatedAt?.toDate() || new Date(),
-        });
-      }
-    });
-
-    // Sort by most recent first
-    hosted.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
-    active.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-    
-    setHostedTournaments(hosted);
-    setActiveTournaments(active);
-  }
-
-  const formatDuration = (seconds: number): string => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
+  useEffect(() => {
+    if (!currentUser) {
+      router.push('/auth/login');
+      return;
+    }
+    fetchData();
+  }, [currentUser, router, fetchData]);
 
   const formatDate = (date: Date): string => {
     return date.toLocaleDateString('en-US', { 

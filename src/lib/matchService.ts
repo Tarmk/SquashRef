@@ -9,7 +9,8 @@ import {
   query,
   where,
   getDocs,
-  deleteDoc
+  deleteDoc,
+  type DocumentData,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
 
@@ -131,7 +132,7 @@ export async function getMatch(matchId: string): Promise<MatchData | null> {
       return {
         ...data,
         matchStartTime: data.matchStartTime?.toDate() || new Date(),
-        gameHistory: data.gameHistory?.map((game: any) => ({
+        gameHistory: data.gameHistory?.map((game: DocumentData) => ({
           ...game,
           startTime: game.startTime?.toDate() || new Date(),
           endTime: game.endTime?.toDate() || new Date(),
@@ -206,7 +207,7 @@ export async function cleanupOrphanedMatches(userId: string): Promise<void> {
     );
     
     const querySnapshot = await getDocs(q);
-    const orphanedMatches: { id: string; data: any }[] = [];
+    const orphanedMatches: { id: string; data: DocumentData }[] = [];
     
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data();

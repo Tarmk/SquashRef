@@ -1,12 +1,18 @@
 'use client';
 
-import { useState, Suspense, useEffect } from 'react';
+import { useState, Suspense, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { autoSaveDraft, loadTournamentDraft, finalizeTournamentDraft } from '@/lib/tournamentService';
+import {
+  autoSaveDraft,
+  loadTournamentDraft,
+  finalizeTournamentDraft,
+  filledTournamentFields,
+  type TournamentDraft,
+} from '@/lib/tournamentService';
 import Header from '@/components/Header';
 
-interface TournamentInfo {
+type TournamentInfo = {
   name: string;
   startDate: string;
   endDate: string;
@@ -17,6 +23,26 @@ interface TournamentInfo {
   entryFee: string;
   prizes: string;
   rules: string;
+};
+
+type Draft = Partial<TournamentDraft>;
+
+function infoToFields(info: TournamentInfo): Draft {
+  return filledTournamentFields({
+    ...info,
+    startDate: info.startDate ? new Date(info.startDate) : undefined,
+    endDate: info.endDate ? new Date(info.endDate) : undefined,
+  });
+}
+
+function infoToDraft(info: TournamentInfo, type: string, format: string): Draft {
+  return {
+    ...infoToFields(info),
+    name: info.name,
+    type: type as TournamentDraft['type'],
+    format: format as TournamentDraft['format'],
+    draftData: { step: 'info', formData: { ...info } },
+  };
 }
 
 function TournamentInfoContent() {
@@ -47,15 +73,9 @@ function TournamentInfoContent() {
   const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving' | 'error' | null>(null);
 
   // Load existing draft if editing
-  useEffect(() => {
-    if (draftId && currentUser) {
-      loadExistingDraft();
-    }
-  }, [draftId, currentUser]);
-
-  const loadExistingDraft = async () => {
+  const loadExistingDraft = useCallback(async () => {
     if (!draftId) return;
-    
+
     setIsLoading(true);
     try {
       const draft = await loadTournamentDraft(draftId);
@@ -79,46 +99,35 @@ function TournamentInfoContent() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [draftId, currentUser]);
 
-  // Auto-save functionality
-  const performAutoSave = async () => {
+  useEffect(() => {
+    if (draftId && currentUser) {
+      loadExistingDraft();
+    }
+  }, [draftId, currentUser, loadExistingDraft]);
+
+  // Auto-save: 1.5 s after the last change, save the form as a draft.
+  const draftIdRef = useRef(currentDraftId);
+  useEffect(() => {
+    draftIdRef.current = currentDraftId;
+  }, [currentDraftId]);
+
+  const performAutoSave = useCallback(async () => {
     if (!currentUser || !tournamentInfo.name.trim()) return;
 
     setAutoSaveStatus('saving');
     try {
-      const draftData: any = {
-        name: tournamentInfo.name,
-        type: tournamentType as 'public' | 'private',
-        format: tournamentFormat as 'round-robin' | 'monrad',
-        draftData: {
-          step: 'info' as const,
-          formData: tournamentInfo
-        }
-      };
-
-      // Only add fields that have values
-      if (tournamentInfo.venue?.trim()) draftData.venue = tournamentInfo.venue;
-      if (tournamentInfo.address?.trim()) draftData.address = tournamentInfo.address;
-      if (tournamentInfo.description?.trim()) draftData.description = tournamentInfo.description;
-      if (tournamentInfo.contactInfo?.trim()) draftData.contactInfo = tournamentInfo.contactInfo;
-      if (tournamentInfo.entryFee?.trim()) draftData.entryFee = tournamentInfo.entryFee;
-      if (tournamentInfo.prizes?.trim()) draftData.prizes = tournamentInfo.prizes;
-      if (tournamentInfo.rules?.trim()) draftData.rules = tournamentInfo.rules;
-      if (tournamentInfo.startDate) draftData.startDate = new Date(tournamentInfo.startDate);
-      if (tournamentInfo.endDate) draftData.endDate = new Date(tournamentInfo.endDate);
-
       const savedDraftId = await autoSaveDraft(
         currentUser.uid,
         currentUser.displayName || currentUser.email || 'User',
-        draftData,
-        currentDraftId || undefined
+        infoToDraft(tournamentInfo, tournamentType, tournamentFormat),
+        draftIdRef.current || undefined
       );
-      
-      if (!currentDraftId) {
+      if (!draftIdRef.current) {
+        draftIdRef.current = savedDraftId;
         setCurrentDraftId(savedDraftId);
       }
-      
       setAutoSaveStatus('saved');
       setTimeout(() => setAutoSaveStatus(null), 2000);
     } catch (error) {
@@ -126,15 +135,14 @@ function TournamentInfoContent() {
       setAutoSaveStatus('error');
       setTimeout(() => setAutoSaveStatus(null), 3000);
     }
-  };
+  }, [currentUser, tournamentInfo, tournamentType, tournamentFormat]);
 
-  // Trigger auto-save when form data changes
   useEffect(() => {
     if (currentUser && tournamentInfo.name.trim()) {
       const timer = setTimeout(performAutoSave, 1500);
       return () => clearTimeout(timer);
     }
-  }, [tournamentInfo, currentUser, tournamentType, tournamentFormat]);
+  }, [performAutoSave, currentUser, tournamentInfo.name]);
 
   const handleInputChange = (field: keyof TournamentInfo, value: string) => {
     setTournamentInfo(prev => ({
@@ -160,36 +168,15 @@ function TournamentInfoContent() {
 
       let finalDraftId = currentDraftId;
 
-              // Save current state as draft if not already saved
-        if (!finalDraftId) {
-          const draftData: any = {
-            name: tournamentInfo.name,
-            type: tournamentType as 'public' | 'private',
-            format: tournamentFormat as 'round-robin' | 'monrad',
-            draftData: {
-              step: 'info' as const,
-              formData: tournamentInfo
-            }
-          };
-
-          // Only add fields that have values
-          if (tournamentInfo.venue?.trim()) draftData.venue = tournamentInfo.venue;
-          if (tournamentInfo.address?.trim()) draftData.address = tournamentInfo.address;
-          if (tournamentInfo.description?.trim()) draftData.description = tournamentInfo.description;
-          if (tournamentInfo.contactInfo?.trim()) draftData.contactInfo = tournamentInfo.contactInfo;
-          if (tournamentInfo.entryFee?.trim()) draftData.entryFee = tournamentInfo.entryFee;
-          if (tournamentInfo.prizes?.trim()) draftData.prizes = tournamentInfo.prizes;
-          if (tournamentInfo.rules?.trim()) draftData.rules = tournamentInfo.rules;
-          if (tournamentInfo.startDate) draftData.startDate = new Date(tournamentInfo.startDate);
-          if (tournamentInfo.endDate) draftData.endDate = new Date(tournamentInfo.endDate);
-
-          finalDraftId = await autoSaveDraft(
-            currentUser.uid,
-            currentUser.displayName || currentUser.email || 'User',
-            draftData
-          );
-          setCurrentDraftId(finalDraftId);
-        }
+      // Save the current state as a draft if auto-save has not done it yet
+      if (!finalDraftId) {
+        finalDraftId = await autoSaveDraft(
+          currentUser.uid,
+          currentUser.displayName || currentUser.email || 'User',
+          infoToDraft(tournamentInfo, tournamentType, tournamentFormat)
+        );
+        setCurrentDraftId(finalDraftId);
+      }
 
       // Create URL parameters with all data
       const params = new URLSearchParams({
@@ -200,31 +187,16 @@ function TournamentInfoContent() {
         ...(finalDraftId && { draft: finalDraftId })
       });
 
-              if (tournamentType === 'public') {
-          // For public tournaments, finalize the draft and go to created page
-          if (finalDraftId) {
-            const finalData: any = {
-              name: tournamentInfo.name,
-            };
-            
-            // Only add fields that have values
-            if (tournamentInfo.venue?.trim()) finalData.venue = tournamentInfo.venue;
-            if (tournamentInfo.address?.trim()) finalData.address = tournamentInfo.address;
-            if (tournamentInfo.description?.trim()) finalData.description = tournamentInfo.description;
-            if (tournamentInfo.contactInfo?.trim()) finalData.contactInfo = tournamentInfo.contactInfo;
-            if (tournamentInfo.entryFee?.trim()) finalData.entryFee = tournamentInfo.entryFee;
-            if (tournamentInfo.prizes?.trim()) finalData.prizes = tournamentInfo.prizes;
-            if (tournamentInfo.rules?.trim()) finalData.rules = tournamentInfo.rules;
-            if (tournamentInfo.startDate) finalData.startDate = new Date(tournamentInfo.startDate);
-            if (tournamentInfo.endDate) finalData.endDate = new Date(tournamentInfo.endDate);
-            
-            await finalizeTournamentDraft(finalDraftId, finalData);
-          }
-          router.push(`/tournament/create/created?${params.toString()}`);
-        } else {
-          // For private tournaments, go to player management
-          router.push(`/tournament/create/players?${params.toString()}`);
+      if (tournamentType === 'public') {
+        // Public tournaments are published straight away
+        if (finalDraftId) {
+          await finalizeTournamentDraft(finalDraftId, { ...infoToFields(tournamentInfo), name: tournamentInfo.name });
         }
+        router.push(`/tournament/create/created?${params.toString()}`);
+      } else {
+        // Private tournaments go on to player management
+        router.push(`/tournament/create/players?${params.toString()}`);
+      }
     } catch (error) {
       console.error('Error saving tournament:', error);
       alert('Failed to save tournament. Please try again.');

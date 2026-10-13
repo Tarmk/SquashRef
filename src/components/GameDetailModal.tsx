@@ -1,5 +1,6 @@
 'use client';
 
+import { escapeHtml, formatDuration } from '@/lib/scoring';
 import { useState } from 'react';
 
 interface GameData {
@@ -31,12 +32,6 @@ export default function GameDetailModal({ game, player1, player2, isOpen, onClos
 
   if (!isOpen) return null;
 
-  const formatDuration = (seconds: number): string => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
-
   const formatTime = (date: Date): string => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
@@ -49,7 +44,7 @@ export default function GameDetailModal({ game, player1, player2, isOpen, onClos
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Game ${game.gameNumber} Transcript - ${player1} vs ${player2}</title>
+          <title>Game ${game.gameNumber} Transcript - ${escapeHtml(player1)} vs ${escapeHtml(player2)}</title>
           <style>
             body { 
               font-family: Arial, sans-serif; 
@@ -93,12 +88,12 @@ export default function GameDetailModal({ game, player1, player2, isOpen, onClos
         <body>
           <div class="header">
             <h1>Squash Game Transcript</h1>
-            <h2>Game ${game.gameNumber}: ${player1} vs ${player2}</h2>
+            <h2>Game ${game.gameNumber}: ${escapeHtml(player1)} vs ${escapeHtml(player2)}</h2>
           </div>
           
           <div class="game-summary">
             <h3>Game Summary</h3>
-            <p><strong>Winner:</strong> ${game.winner}</p>
+            <p><strong>Winner:</strong> ${escapeHtml(game.winner)}</p>
             <p><strong>Final Score:</strong> ${game.finalScore}</p>
             <p><strong>Duration:</strong> ${formatDuration(game.duration)}</p>
             <p><strong>Start Time:</strong> ${formatTime(game.startTime)}</p>
@@ -123,9 +118,9 @@ export default function GameDetailModal({ game, player1, player2, isOpen, onClos
               ${game.points.map((point, index) => `
                 <tr class="${point.isHandout ? 'handout' : ''}">
                   <td>${index + 1}</td>
-                  <td><strong>${point.scorer}</strong></td>
+                  <td><strong>${escapeHtml(point.scorer)}</strong></td>
                   <td>${point.score}</td>
-                  <td>${point.server}</td>
+                  <td>${escapeHtml(point.server)}</td>
                   <td>${point.servingSide}</td>
                   <td>${point.isHandout ? '✓' : ''}</td>
                 </tr>

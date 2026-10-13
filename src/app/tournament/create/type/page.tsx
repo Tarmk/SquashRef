@@ -1,15 +1,10 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
 
 export default function TournamentTypePage() {
   const router = useRouter();
-  const [selectedType, setSelectedType] = useState<'public' | 'private' | null>(null);
-
   const handleTypeSelect = (type: 'public' | 'private') => {
-    setSelectedType(type);
-    
     if (type === 'public') {
       // Generate a unique tournament ID for public tournaments
       const id = Math.random().toString(36).substring(2, 8).toUpperCase();

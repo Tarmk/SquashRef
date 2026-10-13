@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useMemo, Suspense } from 'react';
+import { monradFirstRound, roundCount, roundRobin, seededRandom } from '@/lib/schedule';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 interface Player {
@@ -12,66 +13,27 @@ function TournamentBracketContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
-  const tournamentType = searchParams.get('type') || 'private';
   const tournamentFormat = searchParams.get('format') || 'round-robin';
   const tournamentId = searchParams.get('id') || '';
   const playersJson = searchParams.get('players') || '[]';
   
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [matches, setMatches] = useState<any[]>([]);
-
-  useEffect(() => {
+  const players = useMemo<Player[]>(() => {
     try {
-      const parsedPlayers = JSON.parse(playersJson);
-      setPlayers(parsedPlayers);
-      
-      // Generate matches based on format
-      if (tournamentFormat === 'round-robin') {
-        generateRoundRobinMatches(parsedPlayers);
-      } else {
-        generateMonradMatches(parsedPlayers);
-      }
+      const parsed = JSON.parse(playersJson);
+      return Array.isArray(parsed) ? parsed : [];
     } catch (error) {
       console.error('Error parsing players:', error);
+      return [];
     }
-  }, [playersJson, tournamentFormat]);
+  }, [playersJson]);
 
-  const generateRoundRobinMatches = (playerList: Player[]) => {
-    const matchList = [];
-    for (let i = 0; i < playerList.length; i++) {
-      for (let j = i + 1; j < playerList.length; j++) {
-        matchList.push({
-          id: `match-${i}-${j}`,
-          player1: playerList[i],
-          player2: playerList[j],
-          round: Math.floor(matchList.length / Math.floor(playerList.length / 2)) + 1,
-          status: 'pending',
-          result: null
-        });
-      }
-    }
-    setMatches(matchList);
-  };
-
-  const generateMonradMatches = (playerList: Player[]) => {
-    // For now, just create first round matches
-    const matchList = [];
-    const shuffledPlayers = [...playerList].sort(() => Math.random() - 0.5);
-    
-    for (let i = 0; i < shuffledPlayers.length; i += 2) {
-      if (i + 1 < shuffledPlayers.length) {
-        matchList.push({
-          id: `round1-match-${i/2}`,
-          player1: shuffledPlayers[i],
-          player2: shuffledPlayers[i + 1],
-          round: 1,
-          status: 'pending',
-          result: null
-        });
-      }
-    }
-    setMatches(matchList);
-  };
+  const matches = useMemo(
+    () =>
+      tournamentFormat === 'round-robin'
+        ? roundRobin(players)
+        : monradFirstRound(players, seededRandom(playersJson)),
+    [players, playersJson, tournamentFormat],
+  );
 
   const handleBack = () => {
     router.back();
@@ -114,10 +76,10 @@ function TournamentBracketContent() {
             </div>
             <div className="bg-purple-50 rounded-lg p-4">
               <div className="text-2xl font-bold text-purple-600">
-                {tournamentFormat === 'round-robin' ? 1 : Math.ceil(Math.log2(players.length))}
+                {roundCount(tournamentFormat, players.length)}
               </div>
               <div className="text-sm text-gray-600">
-                {tournamentFormat === 'round-robin' ? 'Round' : 'Rounds'}
+                {roundCount(tournamentFormat, players.length) === 1 ? 'Round' : 'Rounds'}
               </div>
             </div>
             <div className="bg-orange-50 rounded-lg p-4">
@@ -159,7 +121,7 @@ function TournamentBracketContent() {
                 <div key={match.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                   <div className="flex items-center gap-4">
                     <div className="text-sm font-medium text-gray-500">
-                      Match {index + 1}
+                      Round {match.round} · Match {index + 1}
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-gray-900">{match.player1.name}</span>

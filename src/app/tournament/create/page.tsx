@@ -34,7 +34,7 @@ export default function CreateTournamentPage() {
             Set up and manage your squash tournament
           </p>
           <p className="text-lg text-gray-500">
-            Choose how you'd like to create your tournament
+            Choose how you&apos;d like to create your tournament
           </p>
         </div>
 
@@ -175,7 +175,7 @@ export default function CreateTournamentPage() {
                 🚧 Manual Setup Coming Soon
               </h4>
               <p className="text-purple-700">
-                Advanced manual setup features are currently in development. For now, you'll be guided through our standard setup process.
+                Advanced manual setup features are currently in development. For now, you&apos;ll be guided through our standard setup process.
               </p>
             </div>
           </div>
@@ -189,7 +189,7 @@ export default function CreateTournamentPage() {
                 📝 Authentication Recommended
               </h4>
               <p className="text-yellow-700">
-                Sign in to save your tournament data and access advanced features. You can still create tournaments without signing in, but they won't be saved.
+                Sign in to save your tournament data and access advanced features. You can still create tournaments without signing in, but they won&apos;t be saved.
               </p>
             </div>
           </div>

@@ -61,7 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const result = await signInWithEmailAndPassword(authInstance, email, password);
       setCurrentUser(result.user);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Firebase auth error:', error);
       throw error;
     }
