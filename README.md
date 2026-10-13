@@ -28,9 +28,9 @@ A match-support app for squash referees: score a match rally by rally, keep the 
 - **Warm-up and breaks.** A 5-minute warm-up timer (with the side switch at 2:30) and the 60-second break between games.
 - **Transcripts.** Every rally of every game, with server, side and decisions, printable per game or for the whole match.
 - **Accounts.** Sign in with email and password and matches save to your dashboard; without an account everything works in guest mode.
-- **Tournaments.** Create a round-robin or Monrad tournament, add players, see the schedule, and share a join link with a QR code. (Players joining through the link is not connected to the database yet.)
+- **Tournaments.** Create a round-robin or Monrad tournament, publish it, and share a join link or QR code. Players sign in and register themselves (capacity and duplicate checks are enforced by the database rules, not just the page); the host sees the list, can add walk-ins by name and remove anyone. Private tournaments are only reachable through the link.
 
-Scoring follows point-a-rally to 11, win by two, best of 3 or 5 games. This app also ends a game at 15 after 10-10 to keep club matches on time; change `POINT_CAP` in [`src/lib/scoring.ts`](src/lib/scoring.ts) to `Infinity` for the PSA/WSF rule.
+Scoring follows point-a-rally to 11, win by two, best of 3 or 5 games. At 10-10 the referee chooses on the match format screen: play on until someone leads by two (the WSF/PSA rule, the default) or first to 15, which some club events use to keep to time. The choice is saved with the match and shown in its transcript.
 
 ## How it is built
 
@@ -39,7 +39,8 @@ Next.js (App Router), React 19, TypeScript, Tailwind CSS, Firebase Auth and Fire
 - [`src/lib/scoring.ts`](src/lib/scoring.ts): the rules as pure functions (`playRally`, `isGameWon`, ...). The scoring screen calls these instead of re-implementing the rules inline.
 - [`src/lib/schedule.ts`](src/lib/schedule.ts): round-robin schedules with the circle method (nobody plays twice in one round, byes for odd numbers) and the first Monrad round.
 - [`hooks/useMatchPersistence.ts`](hooks/useMatchPersistence.ts): saves a signed-in referee's match to Firestore every 30 seconds and after every game, and marks it complete once.
-- [`firestore.rules`](firestore.rules): users can only create and change their own matches and tournaments.
+- [`src/lib/tournamentService.ts`](src/lib/tournamentService.ts): tournaments and player registration. Each player is one document in `tournaments/{id}/players/{userId}`, written in the same batch as the tournament's `playerCount`.
+- [`firestore.rules`](firestore.rules): referees only see their own matches; only the host edits a tournament; a player can only add or remove themselves, only while registration is open and there is room, and only together with a one-step change to `playerCount`. Tested against the Firestore emulator in [`rules/`](rules/firestore.rules.test.ts).
 
 ## Running it locally
 
@@ -59,18 +60,25 @@ NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
 NEXT_PUBLIC_FIREBASE_APP_ID=
 ```
 
-Deploy the security rules with `firebase deploy --only firestore:rules` (or paste `firestore.rules` into the Firebase console).
+Deploy the security rules with `npx firebase deploy --only firestore:rules` (the project is set in `.firebaserc`), or paste `firestore.rules` into the Firebase console.
+
+To work without a Firebase project at all, run against the local emulators (needs Java 11 or newer):
+
+```bash
+npm run dev:emulators   # Auth + Firestore emulators and the app, with the config in .env.emulators
+```
 
 ## Checks
 
 ```bash
 npm run lint
 npm run typecheck
-npm test           # Vitest: scoring rules, schedules, error messages
+npm test           # Vitest: scoring rules, schedules, registration helpers, redirects
+npm run test:rules # Firestore security rules in the emulator (needs Java)
 npm run build
 ```
 
-CI runs all four on every push.
+CI runs all of them on every push.
 
 ## Background
 
