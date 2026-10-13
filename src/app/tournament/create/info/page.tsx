@@ -7,6 +7,7 @@ import {
   autoSaveDraft,
   loadTournamentDraft,
   finalizeTournamentDraft,
+  publicName,
   filledTournamentFields,
   type TournamentDraft,
 } from '@/lib/tournamentService';
@@ -120,7 +121,7 @@ function TournamentInfoContent() {
     try {
       const savedDraftId = await autoSaveDraft(
         currentUser.uid,
-        currentUser.displayName || currentUser.email || 'User',
+        publicName(currentUser),
         infoToDraft(tournamentInfo, tournamentType, tournamentFormat),
         draftIdRef.current || undefined
       );
@@ -172,7 +173,7 @@ function TournamentInfoContent() {
       if (!finalDraftId) {
         finalDraftId = await autoSaveDraft(
           currentUser.uid,
-          currentUser.displayName || currentUser.email || 'User',
+          publicName(currentUser),
           infoToDraft(tournamentInfo, tournamentType, tournamentFormat)
         );
         setCurrentDraftId(finalDraftId);

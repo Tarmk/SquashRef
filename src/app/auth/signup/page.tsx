@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { authErrorMessage } from '@/lib/errors';
+import { safeNext } from '@/lib/redirect';
+import SquashLogo from '@/components/SquashLogo';
 
 export default function SignupPage() {
   const [email, setEmail] = useState('');
@@ -31,7 +33,8 @@ export default function SignupPage() {
       setError('');
       setLoading(true);
       await signup(email, password, displayName);
-      router.push('/dashboard');
+      // Come back to where the user was going (for example a tournament join link).
+      router.push(safeNext(new URLSearchParams(window.location.search).get('next')));
     } catch (error) {
       setError(authErrorMessage(error, 'Failed to create the account. Please try again.'));
     } finally {
@@ -45,7 +48,7 @@ export default function SignupPage() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            🏸 Squash Ref Support
+            <span className="inline-flex items-center gap-2"><SquashLogo className="w-9 h-9 text-blue-600" /> Squash Ref Support</span>
           </h1>
           <p className="text-lg text-gray-600">
             Create your account

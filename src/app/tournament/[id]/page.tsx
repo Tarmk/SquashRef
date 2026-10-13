@@ -9,8 +9,10 @@ import {
   finalizeTournamentDraft,
   deleteTournamentDraft,
   filledTournamentFields,
+  publicName,
 } from '@/lib/tournamentService';
 import Header from '@/components/Header';
+import TournamentPlayers from '@/components/TournamentPlayers';
 
 interface Tournament {
   id: string;
@@ -55,9 +57,9 @@ export default function TournamentManagePage() {
   const [editForm, setEditForm] = useState<Partial<Tournament>>({});
   const [saving, setSaving] = useState(false);
 
-  const fetchTournament = useCallback(async () => {
+  const fetchTournament = useCallback(async (quiet = false) => {
     try {
-      setLoading(true);
+      if (!quiet) setLoading(true);
       const tournamentData = await loadTournamentDraft(tournamentId);
       
       if (!tournamentData) {
@@ -104,7 +106,7 @@ export default function TournamentManagePage() {
 
       await saveTournamentDraft(
         currentUser.uid,
-        currentUser.displayName || currentUser.email || 'User',
+        publicName(currentUser),
         updateData,
         tournamentId
       );
@@ -687,19 +689,7 @@ export default function TournamentManagePage() {
           )}
 
           {activeTab === 'players' && (
-            <div className="text-center py-8">
-              <div className="text-gray-500 mb-4">👥 Player Management</div>
-              <p className="text-gray-400 mb-4">
-                Player management features coming soon. You&apos;ll be able to:
-              </p>
-              <ul className="text-gray-400 text-left max-w-md mx-auto space-y-2">
-                <li>• View all registered players</li>
-                <li>• Add players manually</li>
-                <li>• Remove players if needed</li>
-                <li>• Send notifications to participants</li>
-                <li>• Export player lists</li>
-              </ul>
-            </div>
+            <TournamentPlayers tournamentId={tournamentId} maxPlayers={tournament.maxPlayers} onChange={() => fetchTournament(true)} />
           )}
         </div>
       </div>

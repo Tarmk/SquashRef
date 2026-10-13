@@ -1,11 +1,16 @@
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  getDoc, 
-  updateDoc, 
-  deleteDoc, 
+import {
+  collection,
+  doc,
+  setDoc,
+  getDoc,
+  getDocs,
+  updateDoc,
+  deleteDoc,
+  increment,
+  orderBy,
+  query,
   serverTimestamp,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -115,10 +120,16 @@ export const saveTournamentDraft = async (
 
   try {
     if (draftId) {
-      // Update existing draft
+      // Update: write only what the caller passed. Filling in the defaults here
+      // would turn a published tournament back into a private draft with 0 players.
       const draftRef = doc(dbInstance, 'tournaments', draftId);
+      const updates: Record<string, unknown> = { ...optionalFields, hostName: userName };
+      if (draftData.name !== undefined) updates.name = draftData.name || 'Untitled Tournament';
+      if (draftData.type) updates.type = draftData.type;
+      if (draftData.format) updates.format = draftData.format;
+      if (draftData.draftData) updates.draftData = draftData.draftData;
       await updateDoc(draftRef, {
-        ...cleanedData,
+        ...cleanFirebaseData(updates),
         updatedAt: serverTimestamp(),
       });
       return draftId;
@@ -231,3 +242,114 @@ export const autoSaveDraft = (
     }, delay);
   });
 }; 
+/** The name shown to other users. Never the email address: tournament lists are public. */
+export function publicName(user: { displayName: string | null } | null | undefined, fallback = 'Host'): string {
+  const name = user?.displayName?.trim();
+  return name || fallback;
+}
+
+// ---------------------------------------------------------------------------
+// Player registration
+//
+// Players live in tournaments/{id}/players/{userId}, one document per player,
+// so registering twice is impossible. The tournament's playerCount is changed
+// in the same batch; firestore.rules only lets a player change that one field,
+// by one, together with their own player document.
+// ---------------------------------------------------------------------------
+
+export interface TournamentPlayer {
+  /** Firestore document id: the player's user id, or a generated id for players the host added by hand. */
+  id: string;
+  userId: string | null;
+  name: string;
+  joinedAt: Date | null;
+  addedByHost: boolean;
+}
+
+export type RegistrationState = 'open' | 'joined' | 'full' | 'not-open' | 'closed';
+
+/** Whether a user can join, given the tournament, how many players it has, and whether they are already in. */
+export function registrationState(
+  tournament: { status: string; maxPlayers?: number | null },
+  playerCount: number,
+  alreadyJoined: boolean,
+): RegistrationState {
+  if (alreadyJoined) return 'joined';
+  if (tournament.status === 'draft') return 'not-open';
+  if (tournament.status !== 'registration') return 'closed';
+  if (tournament.maxPlayers && playerCount >= tournament.maxPlayers) return 'full';
+  return 'open';
+}
+
+export const MAX_PLAYER_NAME = 60;
+
+/** Trim and collapse whitespace in a player name; returns '' if nothing usable is left. */
+export function cleanPlayerName(name: string): string {
+  return name.replace(/\s+/g, ' ').trim().slice(0, MAX_PLAYER_NAME);
+}
+
+const playersCol = (tournamentId: string) => {
+  const dbInstance = db();
+  if (!dbInstance) throw new Error('Firebase not initialized');
+  return collection(dbInstance, 'tournaments', tournamentId, 'players');
+};
+
+export const listTournamentPlayers = async (tournamentId: string): Promise<TournamentPlayer[]> => {
+  const snap = await getDocs(query(playersCol(tournamentId), orderBy('joinedAt', 'asc')));
+  return snap.docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      userId: (data.userId as string | undefined) ?? null,
+      name: (data.name as string | undefined) ?? 'Player',
+      joinedAt: data.joinedAt?.toDate?.() ?? null,
+      addedByHost: Boolean(data.addedByHost),
+    };
+  });
+};
+
+/** Register the signed-in user. Throws 'already-joined' if they are already on the list. */
+export const joinTournament = async (tournamentId: string, userId: string, name: string): Promise<void> => {
+  const dbInstance = db();
+  if (!dbInstance) throw new Error('Firebase not initialized');
+  const playerName = cleanPlayerName(name);
+  if (!playerName) throw new Error('empty-name');
+
+  const playerRef = doc(playersCol(tournamentId), userId);
+  if ((await getDoc(playerRef)).exists()) throw new Error('already-joined');
+
+  const batch = writeBatch(dbInstance);
+  batch.set(playerRef, { userId, name: playerName, joinedAt: serverTimestamp(), addedByHost: false });
+  batch.update(doc(dbInstance, 'tournaments', tournamentId), { playerCount: increment(1) });
+  await batch.commit();
+};
+
+/** The signed-in user leaves the tournament. */
+export const leaveTournament = async (tournamentId: string, userId: string): Promise<void> => {
+  await removeTournamentPlayer(tournamentId, userId);
+};
+
+/** Host: add a player who has no account (for example someone signing up at the desk). */
+export const addPlayerAsHost = async (tournamentId: string, name: string): Promise<void> => {
+  const dbInstance = db();
+  if (!dbInstance) throw new Error('Firebase not initialized');
+  const playerName = cleanPlayerName(name);
+  if (!playerName) throw new Error('empty-name');
+
+  const batch = writeBatch(dbInstance);
+  batch.set(doc(playersCol(tournamentId)), { userId: null, name: playerName, joinedAt: serverTimestamp(), addedByHost: true });
+  batch.update(doc(dbInstance, 'tournaments', tournamentId), { playerCount: increment(1) });
+  await batch.commit();
+};
+
+/** Remove a player (the host removing anyone, or a player removing themselves). */
+export const removeTournamentPlayer = async (tournamentId: string, playerId: string): Promise<void> => {
+  const dbInstance = db();
+  if (!dbInstance) throw new Error('Firebase not initialized');
+  const playerRef = doc(playersCol(tournamentId), playerId);
+  if (!(await getDoc(playerRef)).exists()) return;
+  const batch = writeBatch(dbInstance);
+  batch.delete(playerRef);
+  batch.update(doc(dbInstance, 'tournaments', tournamentId), { playerCount: increment(-1) });
+  await batch.commit();
+};

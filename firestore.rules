@@ -16,23 +16,78 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid;
     }
 
-    // Tournaments: the host manages them; public ones can be read by any signed-in user.
     match /tournaments/{tournamentId} {
-      allow read: if signedIn() && (resource.data.type == 'public' || resource.data.hostId == request.auth.uid);
+      function playerDoc(uid) {
+        return /databases/$(database)/documents/tournaments/$(tournamentId)/players/$(uid);
+      }
+      function countBefore() {
+        return resource.data.get('playerCount', 0);
+      }
+      function onlyCountChanges() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['playerCount']);
+      }
+      function withinCapacity() {
+        return resource.data.get('maxPlayers', null) == null
+          || request.resource.data.playerCount <= resource.data.maxPlayers;
+      }
+      // A player joining: count goes up by one in the same write that creates their entry.
+      function playerJoins() {
+        return resource.data.status == 'registration'
+          && request.resource.data.playerCount == countBefore() + 1
+          && withinCapacity()
+          && !exists(playerDoc(request.auth.uid))
+          && existsAfter(playerDoc(request.auth.uid));
+      }
+      // A player leaving: count goes down by one in the same write that deletes their entry.
+      function playerLeaves() {
+        return request.resource.data.playerCount == countBefore() - 1
+          && exists(playerDoc(request.auth.uid))
+          && !existsAfter(playerDoc(request.auth.uid));
+      }
+
+      // Anyone signed in can open a tournament by its id: that is how join links
+      // (including for private tournaments) work. Only public ones can be listed.
+      allow get: if signedIn();
+      allow list: if signedIn() && (resource.data.type == 'public' || resource.data.hostId == request.auth.uid);
       allow create: if signedIn() && request.resource.data.hostId == request.auth.uid;
-      allow update: if signedIn()
-        && resource.data.hostId == request.auth.uid
-        && request.resource.data.hostId == request.auth.uid;
+      allow update: if signedIn() && (
+        (resource.data.hostId == request.auth.uid && request.resource.data.hostId == request.auth.uid)
+        || (onlyCountChanges() && (playerJoins() || playerLeaves()))
+      );
       allow delete: if signedIn() && resource.data.hostId == request.auth.uid;
 
-      // Players register themselves; the host can manage everyone.
+      // One document per player. Players register themselves (document id = their
+      // user id); the host can add and remove anyone. Every create and delete has
+      // to move the tournament's playerCount by one in the same batch.
       match /players/{playerId} {
-        function isHost() {
-          return get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.hostId == request.auth.uid;
+        function tournamentBefore() {
+          return get(/databases/$(database)/documents/tournaments/$(tournamentId)).data;
         }
+        function tournamentAfter() {
+          return getAfter(/databases/$(database)/documents/tournaments/$(tournamentId)).data;
+        }
+        function isHost() {
+          return tournamentBefore().hostId == request.auth.uid;
+        }
+        function countChangesBy(n) {
+          return tournamentAfter().get('playerCount', 0) == tournamentBefore().get('playerCount', 0) + n;
+        }
+        function validEntry() {
+          let d = request.resource.data;
+          return d.keys().hasOnly(['userId', 'name', 'joinedAt', 'addedByHost'])
+            && d.name is string && d.name.size() > 0 && d.name.size() <= 60
+            && d.joinedAt == request.time;
+        }
+
         allow read: if signedIn();
-        allow create: if signedIn() && (request.resource.data.userId == request.auth.uid || isHost());
-        allow update, delete: if signedIn() && (resource.data.userId == request.auth.uid || isHost());
+        allow create: if signedIn() && validEntry() && countChangesBy(1) && (
+          isHost()
+          || (playerId == request.auth.uid
+              && request.resource.data.userId == request.auth.uid
+              && request.resource.data.addedByHost == false)
+        );
+        allow update: if false;
+        allow delete: if signedIn() && countChangesBy(-1) && (isHost() || playerId == request.auth.uid);
       }
     }
 
