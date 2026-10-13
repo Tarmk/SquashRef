@@ -1,11 +1,12 @@
 import Link from 'next/link';
+import SquashLogo from '@/components/SquashLogo';
 
 export default function NotFound() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="max-w-md w-full text-center">
         <div className="bg-white rounded-2xl shadow-lg p-8">
-          <div className="text-6xl mb-6">🏸</div>
+          <SquashLogo className="w-16 h-16 mx-auto mb-6 text-blue-600" />
           <h1 className="text-3xl font-bold text-gray-900 mb-4">
             Page Not Found
           </h1>

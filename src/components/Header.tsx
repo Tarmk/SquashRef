@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import SquashLogo from '@/components/SquashLogo';
 
 interface HeaderProps {
   showBackButton?: boolean;
@@ -58,7 +59,7 @@ export default function Header({ showBackButton = false, backUrl = '/dashboard',
 
             {/* Logo and Brand */}
             <Link href="/dashboard" className="flex items-center space-x-3 group">
-              <div className="text-2xl group-hover:scale-110 transition-transform">🏸</div>
+              <SquashLogo className="w-9 h-9 shrink-0 text-blue-600 group-hover:scale-110 transition-transform" />
               <div className="flex flex-col">
                 <span className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
                   SquashRef
@@ -115,15 +116,6 @@ export default function Header({ showBackButton = false, backUrl = '/dashboard',
                 <span>New Tournament</span>
               </Link>
             </div>
-
-            {/* Notifications (placeholder) */}
-            <button className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-5-5-5 5h5zm0 0v1a3 3 0 01-6 0v-1m6-12V9a3 3 0 01-6 0V9" />
-              </svg>
-              {/* Notification badge (when there are notifications) */}
-              {/* <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full"></span> */}
-            </button>
 
             {/* User Menu */}
             <div className="relative">

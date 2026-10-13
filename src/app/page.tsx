@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
+import SquashLogo from '@/components/SquashLogo';
 
 export default function ModeSelection() {
   const [selectedMode, setSelectedMode] = useState<string | null>(null);
@@ -117,7 +118,7 @@ export default function ModeSelection() {
             `}
           >
             <div className="text-center">
-              <div className="text-6xl mb-6">🏸</div>
+              <SquashLogo className="w-16 h-16 mx-auto mb-6 text-blue-600" />
               <h3 className="text-3xl font-bold text-gray-900 mb-4">
                 Individual Games
               </h3>
